@@ -1,0 +1,156 @@
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+--><!--
+
+    Lets deploy some Enterprise Integration Patterns inside the ActiveMQ Message Broker
+    For more information, see:
+
+    http://camel.apache.org
+
+    Include this file in your configuration to enable Camel
+
+    e.g. <import resource="camel.xml"/>
+
+    Note: this configuration is already included in a default configuration via Camel Web Console.
+    See ${ACTIVEMQ_HOME}/conf/jetty.xml for more info on how to disable it, in case you want to do so.
+    Also check ${ACTIVEMQ_HOME}/webapps/camel/WEB-INF/application-context.xml to see how this config is included in Camel Web Console
+
+
+--><beans xmlns="http://www.springframework.org/schema/beans" xmlns:cxf="http://camel.apache.org/schema/cxf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+		http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
+		http://camel.apache.org/schema/cxf http://camel.apache.org/schema/cxf/camel-cxf.xsd
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-3.0.xsd
+	">
+  <!-- SOAP (Camel CXF) component
+     <cxf:cxfEndpoint id="serviceEndpoint" address="http://192.168.1.4/WSHandbook/Handbook.asmx"
+                     wsdlURL="http://192.168.1.4/WSHandbook/Handbook.asmx?wsdl"
+                     endpointName="s:ShowStreets"
+                     serviceName="s:Handbook"
+             xmlns:s="http://www.babypages.ru/" />
+-->
+  <camelContext id="camel" xmlns="http://camel.apache.org/schema/spring">
+    <!--<threadPoolProfile id="myDefaultProfile" defaultProfile="true" poolSize="5" keepAliveTime="25" maxPoolSize="15" maxQueueSize="250" rejectedPolicy="Abort"/>
+-->
+        <!-- You can use a <packages> element for each root package to search for Java routes -->
+    <packageScan>
+      <package>org.foo.bar</package>
+    </packageScan>
+<!--
+    <route id="input_jasper">
+      <from uri="activemq:queue:jasper_input"/>
+      <split>
+        <xpath>//control_data</xpath>
+        <multicast>
+          <to uri="activemq:queue:jasper_control_data" />
+          <to uri="activemq:queue:jasper_jasper_control" />
+        </multicast>
+      </split>
+      <split>
+        <xpath>//print_data</xpath>
+        <recipientList>
+          <simple>activemq:queue:jasper_print_data_${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
+        </recipientList>
+      </split>
+    </route>
+-->
+
+    <route id="control_package">
+      <from uri="activemq:queue:jasper_control_data"/>
+      <setHeader headerName="CamelHttpMethod">
+        <constant>GET</constant>
+      </setHeader>
+      <recipientList>
+        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_date_nakl=${in.headers.date_nakl}&amp;XML_GET_PARAM_num_nakl=${in.headers.num_nakl}&amp;XML_URL=${in.headers.XML_URL}</simple>
+      </recipientList>
+      <choice>
+        <when>
+          <simple>${in.headers.Content-Type} == 'application/pdf'</simple>
+          <to uri="activemq:queue:jasper_out"/>
+        </when>
+        <otherwise>
+          <to uri="activemq:queue:jasper_error"/>
+        </otherwise>
+      </choice>
+    </route>
+
+    <route id="out_jasper">
+      <from uri="activemq:queue:jasper_out"/>
+	<setHeader headerName="CamelHttpMethod">
+        <constant>GET</constant>
+      </setHeader>
+      <setHeader headerName="Recipient">
+         <simple>file:/tmp/amq/?fileName=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl},http://localhost:8080/print/?path=/tmp/amq/${in.headers.num_nakl}_${in.headers.date_nakl}&amp;filename=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
+      </setHeader>
+      <recipientList delimiter=",">
+         <header>Recipient</header>
+      </recipientList>
+    </route>
+
+    <route id="check_printed">
+      <from uri="activemq:queue:twisted_status"/>
+      <to uri="log:org.apache.camel.example?level=INFO&amp;showHeaders=true"/>
+      <setHeader headerName="CamelHttpMethod">
+        <constant>GET</constant>
+      </setHeader>
+      <recipientList>
+        <simple>http://localhost:8080/check_status/?jobId=${body}&amp;jid${in.headers.jid}</simple>
+      </recipientList>
+    </route>
+
+<!--
+    <route id="email_attach">
+	<from uri="file:/tmp/amq_email?delete=true" />
+	<setHeader headerName="Content-Type"> 
+		<simple>application/pdf;name="${file:onlyname}";</simple> 
+	</setHeader> 
+	<setHeader headerName="Content-Disposition"> 
+		<simple>attachment;filename="${file:onlyname}";size=${file:size}</simple> 
+	</setHeader>                 
+	<setHeader headerName="subject"> 
+		<simple>Filename ${file:onlyname} date ${date:now:dd/MM/yyyy HH:mm:ss}</simple> 
+	</setHeader> 
+	<to uri="smtp://avsytar@babypages.ru?password=avsytar_1234&amp;to=alex@babypages.ru&amp;debugMode=true&amp;from=avsytar@babypages.ru" />
+    </route>
+-->
+
+    </camelContext>
+
+<!-- http camel component  -->
+  <bean class="org.apache.camel.component.http.HttpComponent" id="http">
+    <property name="camelContext" ref="camel"/>
+    <property name="httpConnectionManager" ref="myHttpConnectionManager"/>
+  </bean>
+  <bean class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager" id="myHttpConnectionManager">
+    <property name="params" ref="myHttpConnectionManagerParams"/>
+  </bean>
+  <bean class="org.apache.commons.httpclient.params.HttpConnectionManagerParams" id="myHttpConnectionManagerParams">
+    <property name="defaultMaxConnectionsPerHost" value="5"/>
+  </bean>
+
+ <!-- configure the camel activemq component to use the current broker -->
+    <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent" >
+        <property name="connectionFactory">
+          <bean class="org.apache.activemq.ActiveMQConnectionFactory">
+            <property name="brokerURL" value="vm://localhost?create=false&amp;waitForStart=10000" />
+            <property name="userName" value="${activemq.username}"/>
+            <property name="password" value="${activemq.password}"/>
+          </bean>
+        </property>
+    </bean>
+
+
+</beans>

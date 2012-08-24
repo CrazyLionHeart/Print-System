@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<print>
+    <control_data>
+        <username>Имярек</username>
+        <date>06-06-2012 17:12:02</date>
+        <type>Накладная</type>
+        <user_ip>192.168.1.190</user_ip>
+        <reportUnit>/PrintForm/Test_44</reportUnit>
+        <outputType>pdf</outputType>
+        <flowId>viewReportFlow</flowId>
+        <reportLocale>UTF-8</reportLocale>
+        <extraFilter>none</extraFilter>
+        <printer>FS-1018MFP</printer>
+        <XML_GET_PARAM_num_nakl>1</XML_GET_PARAM_num_nakl>
+        <XML_GET_PARAM_date_nakl>06-06-2012</XML_GET_PARAM_date_nakl>
+        <XML_URL>http://192.168.1.27:8080/get_jrxml</XML_URL>
+	<print_type>print</print_type>
+    </control_data>
+    <print_data>
+        <nakladnaya>
+            <header>
+                <nomer>1</nomer>
+                <data>06/06/2012</data>
+                <barcode>549905</barcode>
+                <phone>+7 (961) 135-58-53</phone>
+                <address>Полковая ул, д. 3, стр. 6</address>
+                <note>Позовнить за 30 минут до доставки</note>
+            </header>
+            <table>
+                <row>
+                    <name>Крем для мытья с помпой-дозатором Stelatopia</name>
+         <company>Mustela</company>
+                    <quantity>1</quantity>
+                    <price>807.00</price>
+                    <summa>807.00</summa>
+                </row>
+                <row>
+                    <name>Масло для ванны Stelatopia</name>
+                    <company>Mustela</company>
+                    <quantity>1</quantity>
+                    <price>1009.00</price>
+                    <summa>1009.00</summa>
+                </row>
+                <row>
+                    <name>Крем под подгузник</name>
+                    <company>Mustela</company>
+                    <quantity>1</quantity>
+                    <price>580.00</price>
+                    <summa>580.00</summa>
+                </row>
+            </table>
+            <dolg>0.00</dolg>
+            <discout>2.00</discout>
+            <weight>0.77</weight>
+            <dostavka>100.00</dostavka>
+            <summary>2396.00</summary>
+            <count>3</count>
+            <to_pay_without_sdachi>2448.08</to_pay_without_sdachi>
+            <need_sdacha>551.92</need_sdacha>
+            <to_pay_with_sdacha>3000.00</to_pay_with_sdacha>
+            <date_of_delivery>07/06/2011</date_of_delivery>
+            <time_of_delivery>с 12:00 до 15:00</time_of_delivery>
+            <courer>Иванов А. В.</courer>
+            <zakazchik>Щербинин</zakazchik>
+        </nakladnaya>
+    </print_data>
+</print>
