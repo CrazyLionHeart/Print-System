@@ -35,21 +35,12 @@
 		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
 		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-3.0.xsd
 	">
-  <!-- SOAP (Camel CXF) component
-     <cxf:cxfEndpoint id="serviceEndpoint" address="http://192.168.1.4/WSHandbook/Handbook.asmx"
-                     wsdlURL="http://192.168.1.4/WSHandbook/Handbook.asmx?wsdl"
-                     endpointName="s:ShowStreets"
-                     serviceName="s:Handbook"
-             xmlns:s="http://www.babypages.ru/" />
--->
   <camelContext id="camel" xmlns="http://camel.apache.org/schema/spring">
-    <!--<threadPoolProfile id="myDefaultProfile" defaultProfile="true" poolSize="5" keepAliveTime="25" maxPoolSize="15" maxQueueSize="250" rejectedPolicy="Abort"/>
--->
-        <!-- You can use a <packages> element for each root package to search for Java routes -->
+    <!-- You can use a <packages> element for each root package to search for Java routes -->
     <packageScan>
       <package>org.foo.bar</package>
     </packageScan>
-<!--
+    <!--
     <route id="input_jasper">
       <from uri="activemq:queue:jasper_input"/>
       <split>
@@ -67,39 +58,44 @@
       </split>
     </route>
 -->
-
     <route id="control_package">
       <from uri="activemq:queue:jasper_control_data"/>
       <setHeader headerName="CamelHttpMethod">
         <constant>GET</constant>
       </setHeader>
+      <setHeader headerName="XML_GET_PARAM_date_nakl">
+        <simple>${in.headers.XML_GET_PARAM_date_nakl}</simple>
+      </setHeader>
+      <setHeader headerName="XML_GET_PARAM_num_nakl">
+        <simple>in.headers.XML_GET_PARAM_num_nakl</simple>
+      </setHeader>
+      <setHeader headerName="XML_URL">
+        <simple>${in.headers.XML_URL}</simple>
+      </setHeader>
+      <setHeader headerName="reportUnit">
+        <simple>${in.headers.reportUnit}</simple>
+      </setHeader>
       <recipientList>
-        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_date_nakl=${in.headers.date_nakl}&amp;XML_GET_PARAM_num_nakl=${in.headers.num_nakl}&amp;XML_URL=${in.headers.XML_URL}</simple>
+        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_date_nakl=${headers.XML_GET_PARAM_date_nakl}&amp;XML_GET_PARAM_num_nakl=${in.headers.XML_GET_PARAM_num_nakl}&amp;XML_URL=${in.headers.XML_URL}</simple>
       </recipientList>
       <choice>
         <when>
           <simple>${in.headers.Content-Type} == 'application/pdf'</simple>
-          <to uri="activemq:queue:jasper_out"/>
+          <setHeader headerName="CamelHttpMethod">
+            <constant>GET</constant>
+          </setHeader>
+          <setHeader headerName="Recipient">
+            <simple>file:/tmp/amq/?fileName=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl},http://localhost:8080/print/?path=/tmp/amq/${in.headers.num_nakl}_${in.headers.date_nakl}&amp;filename=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
+          </setHeader>
+          <recipientList delimiter=",">
+            <header>Recipient</header>
+          </recipientList>
         </when>
         <otherwise>
           <to uri="activemq:queue:jasper_error"/>
         </otherwise>
       </choice>
     </route>
-
-    <route id="out_jasper">
-      <from uri="activemq:queue:jasper_out"/>
-	<setHeader headerName="CamelHttpMethod">
-        <constant>GET</constant>
-      </setHeader>
-      <setHeader headerName="Recipient">
-         <simple>file:/tmp/amq/?fileName=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl},http://localhost:8080/print/?path=/tmp/amq/${in.headers.num_nakl}_${in.headers.date_nakl}&amp;filename=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
-      </setHeader>
-      <recipientList delimiter=",">
-         <header>Recipient</header>
-      </recipientList>
-    </route>
-
     <route id="check_printed">
       <from uri="activemq:queue:twisted_status"/>
       <to uri="log:org.apache.camel.example?level=INFO&amp;showHeaders=true"/>
@@ -107,9 +103,10 @@
         <constant>GET</constant>
       </setHeader>
       <recipientList>
-        <simple>http://localhost:8080/check_status/?jobId=${body}&amp;jid${in.headers.jid}</simple>
+        <simple>http://localhost:8080/check_status/?jobId=${body}</simple>
       </recipientList>
     </route>
+  
 
 <!--
     <route id="email_attach">
@@ -128,29 +125,4 @@
 -->
 
     </camelContext>
-
-<!-- http camel component  -->
-  <bean class="org.apache.camel.component.http.HttpComponent" id="http">
-    <property name="camelContext" ref="camel"/>
-    <property name="httpConnectionManager" ref="myHttpConnectionManager"/>
-  </bean>
-  <bean class="org.apache.commons.httpclient.MultiThreadedHttpConnectionManager" id="myHttpConnectionManager">
-    <property name="params" ref="myHttpConnectionManagerParams"/>
-  </bean>
-  <bean class="org.apache.commons.httpclient.params.HttpConnectionManagerParams" id="myHttpConnectionManagerParams">
-    <property name="defaultMaxConnectionsPerHost" value="5"/>
-  </bean>
-
- <!-- configure the camel activemq component to use the current broker -->
-    <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent" >
-        <property name="connectionFactory">
-          <bean class="org.apache.activemq.ActiveMQConnectionFactory">
-            <property name="brokerURL" value="vm://localhost?create=false&amp;waitForStart=10000" />
-            <property name="userName" value="${activemq.username}"/>
-            <property name="password" value="${activemq.password}"/>
-          </bean>
-        </property>
-    </bean>
-
-
 </beans>
