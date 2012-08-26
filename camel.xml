@@ -106,23 +106,5 @@
         <simple>http://localhost:8080/check_status/?jobId=${body}</simple>
       </recipientList>
     </route>
-  
-
-<!--
-    <route id="email_attach">
-	<from uri="file:/tmp/amq_email?delete=true" />
-	<setHeader headerName="Content-Type"> 
-		<simple>application/pdf;name="${file:onlyname}";</simple> 
-	</setHeader> 
-	<setHeader headerName="Content-Disposition"> 
-		<simple>attachment;filename="${file:onlyname}";size=${file:size}</simple> 
-	</setHeader>                 
-	<setHeader headerName="subject"> 
-		<simple>Filename ${file:onlyname} date ${date:now:dd/MM/yyyy HH:mm:ss}</simple> 
-	</setHeader> 
-	<to uri="smtp://avsytar@babypages.ru?password=avsytar_1234&amp;to=alex@babypages.ru&amp;debugMode=true&amp;from=avsytar@babypages.ru" />
-    </route>
--->
-
     </camelContext>
 </beans>
