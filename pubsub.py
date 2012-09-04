@@ -4,27 +4,36 @@
 from twisted.internet import reactor
 from twisted.web.server import NOT_DONE_YET
 from twisted.web.resource import Resource
-from twisted.internet.task import deferLater
+from twisted.internet.task import deferLater, defer
 from twisted.application import service, internet
 from twisted.web import server
 from twisted.application.service import Application
 from twisted.application.internet import TCPServer
 from twisted.web.server import Site
 from twisted.python import log
-from twisted.web.resource import ErrorPage
-from twisted.python import usage
 
 import cups
 
 import urllib
 
-from stompy.simple import Client
+#from stompy.simple import Client
+from stompest.simple import Stomp
+from stompest.async import StompConfig, StompCreator
 
 import os
+import time
+from datetime import datetime
+import calendar
 
 from lxml import etree
 
+import json
+
+import types
+
 stringify = etree.XPath("string()")
+
+print_guids = list()
 
 def find(f, seq):
   """Return first item in sequence where f(item) == True."""
@@ -32,6 +41,65 @@ def find(f, seq):
     if f(item): 
       return item
 
+class Consumer(object):
+    
+    QUEUE = '/queue/jasper_error'
+    ERROR_QUEUE = '/queue/testConsumerError'
+
+    def __init__(self, config=None):
+        if config is None:
+            config = StompConfig('localhost', 61613)
+        self.config = config
+        
+    @defer.inlineCallbacks
+    def run(self):
+        #Establish connection
+        stomp = yield StompCreator(self.config).getConnection()
+        #Subscribe to inbound queue
+        headers = {
+            #client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
+            'ack': 'client-individual',
+            #this is the maximum messages the broker will let you work on at the same time
+            'activemq.prefetchSize': 100, 
+        }
+        stomp.subscribe(self.QUEUE, self.consume, headers, errorDestination=self.ERROR_QUEUE)
+    
+    def consume(self, stomp, frame):
+        """
+        NOTE: you can return a Deferred here
+        """
+        log.msg("Отправка уведомления пользователю об ошибке в JasperReport")
+        conf = {}
+        conf['clientId'] = "CurrentClient"
+        message = {}
+        message["body"] = frame['body']
+        message["recipient"] = ["*"]
+        message["group"] = ["*"]
+        message["type"] = "baloon"
+        message["profile"] = "user"
+        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        Producer().run(ControlMessage)
+
+
+class Producer(object):
+
+    def __init__(self, config=None):
+        if config is None:
+            config = StompConfig('localhost', 61613)
+        self.config = config
+
+    @defer.inlineCallbacks
+    def run(self, data = {"content": None, "destination": {"type": None, "name": None}, "conf": {} }):
+        #Establish connection
+        stomp = yield StompCreator(self.config).getConnection()
+        log.msg("Incoming data: %s" % data)
+
+        try:
+                stomp.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
+        finally:
+            pass
+
+Consumer().run()
 
 class Simple(Resource):
     isLeaf = True
@@ -39,45 +107,50 @@ class Simple(Resource):
     def __init__(self, uri):
         Resource.__init__(self)
         self.uri = uri
+        
         self.conn = cups.Connection()
+        
+        self.stomp = Stomp('localhost', 61613)
+        self.stomp.connect()
+
+    def Send_Notify(self, content, recipient = "*"):
+        log.msg("Отправка уведомления пользователю")
+        conf = {}
+        conf['clientId'] = "CurrentClient"
+        message = {}
+        message["body"] = content
+        message["recipient"] = [recipient]
+        message["group"] = ["*"]
+        message["type"] = "baloon"
+        message["profile"] = "user"
+        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        Producer().run(ControlMessage)
 
     def _put_to_monitor(self, jobId):
         """
            Отправляем задание на печать в очередь мониторинга. Сообщения из очереди прилетают с задержкой в 300 секунд
         """
-        log.info("Отправка задания печати на мониторинг")
+        log.msg("Отправка задания печати на мониторинг")
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': {'AMQ_SCHEDULED_DELAY':300000, 'CamelCharsetName': 'UTF-8'} }
-        self._put_to_stomp(data)
-
-    def _put_to_stomp(self, data = {"content": None, "destination": {"type": None, "name": None}, "conf": {} }):
-        """
-           Отправляем сообщение в очередь используя протокол Stomp
-        """
-        log.info("Отправляем сообщение в очередь")
-        stomp = Client()
-        stomp.connect(username="admin", password="activemq")
-        stomp.put(data['content'], destination = "/%(type)s/%(name)s" % data['destination'], conf =  data['conf'])
-        stomp.disconnect()
+        Producer().run(data)
 
     def _get_from_stomp(self, data = {"type": "queue", "name": "queue_name"}):
         """
            Получаем сообщение из очереди. Используем блокирующий вывод,
            так как непонятно сколько раз щемится в очередь до получения сообщения
         """
-        log.info("Получаем сообщение из очереди")
-        stomp = Client()
-        stomp.connect(username="admin", password="activemq")
-        destination = "/%(type)s/%(name)s" % data
-        stomp.subscribe(destination)
-        message = stomp.get()
-        stomp.unsubscribe(destination)
-        stomp.disconnect()
-        return message.body
+        log.msg("Получаем сообщение из очереди %(name)s" % data)
 
+        headers = {
+            #client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
+            'ack': 'client-individual'
+        }
 
-    def _get_preview_from_stomp(self, num_nakl, date_nakl):
-        destinatination = {"type": "queue", "name": "jasper_preview_%(num_nakl)s_%(date_nakl)s" % {"num_nakl":num_nakl,"date_nakl":date_nakl}}
-        self._get_from_stomp(destination)
+        self.stomp.subscribe("/%(type)s/%(name)s" % data, headers)
+        frame = self.stomp.receiveFrame()
+        self.stomp.ack(frame)
+        self.stomp.disconnect()
+        return frame['body']
 
     def _get_print_status(self, request):
         """ 
@@ -101,12 +174,17 @@ class Simple(Resource):
         if not find(lambda state: state == Attributes['job-state'], list):
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor(jobId)
+        else:
+            # Тут нужно сделать unlink!!
+            log.msg(request.getAllHeaders())
+            content = "Print done!"
+            self.Send_Notify(content)
                 
     def _print_job(self, conf = None):
         # get printer name from filename
-        printer_name = conf['printer']
+        printer_name = unicode(conf['printer'])
         filename = urllib.url2pathname(conf['filename'])
-        path = conf['path']
+        path = "/tmp/amq/" + filename
 
         jobId = self.conn.printFile(printer_name, path, filename, {})
 
@@ -114,52 +192,19 @@ class Simple(Resource):
         d.addCallback(self._put_to_monitor)
         d.addErrback(log.err)
 
-    def _get_jrxml(self, request):
-        """
-           Возвращает JasperReport XML для генерации печатной
-           формы.
-           Возвращаемый тип документа - text/xml
-        """
-
-        log.msg("Request: %s" % request.getAllHeaders())
-        log.msg("Args: %s" % request.args)
-        conf = {}
-        conf["XML_GET_PARAM_num_nakl"] = request.args.get('num_nakl', [None])[0]
-        conf["XML_GET_PARAM_date_nakl"] = request.args.get('date_nakl', [None])[0]
-        log.msg("JRXML conf: %s" % conf)
-
-        read_data = self._get_from_stomp(data = {"type": "queue", "name": "jasper_print_data_%(XML_GET_PARAM_num_nakl)s_%(XML_GET_PARAM_date_nakl)s" % conf })
-        log.msg("Read data from stomp: %s" % read_data)
-        request.setHeader('Content-Type', "text/xml")
-        request.write(read_data)
-        request.finish()
-
-    def _get_preview(self, request):
-        """
-           Возращает пользователю печатную форму.
-           Возвращаемый тип документа - application/pdf
-        """
-        num_nakl = unicode(request.args.get('num_nakl', [None])[0], 'utf-8')
-        date_nakl = unicode(request.args.get('date_nakl', [None])[0], 'utf-8')
-        FILE_LOCATION = "/tmp/amq_preview/%(num_nakl)s_%(date_nakl)s" % {"num_nakl":num_nakl,"date_nakl":date_nakl}
-        f = open(FILE_LOCATION)
-	read_data = f.read()
-        request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
-        request.setHeader('Content-Type', "application/pdf")
-        request.write(read_data)
-	os.ulink(FILE_LOCATION)
-        request.finish()
-
     def render_GET(self, request):
+        log.msg("URI: %s" % self.uri)
         if (self.uri == "print"):
             """
                Тут происходит обработка печатных форм
             """
             log.msg("Print args: %s" % request.args)
+            log.msg("Print Headers: %s" % request.getAllHeaders())
 
-            filename =  unicode(request.args.get('filename', [None])[0], 'utf-8')
-            path = unicode(request.args.get('path', [None])[0], 'utf-8')
+            filename =  request.args.get('filename', [None])[0]
             action = request.getHeader('print_type')
+            path = request.args.get("path", [None])[0]
+            printer = request.getHeader('printer')
 
             if (action == "print"):
                 """
@@ -170,12 +215,20 @@ class Simple(Resource):
                 d.addCallback(self._print_job)
                 d.addErrback(log.err)
                 return "Send to print"
+
             elif (action == "preview"):
                 """
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                pass
+                log.msg(request.getAllHeaders())
+                conf = {}
+                conf['clientId'] = "CurrentClient"
+
+                content = '<a href=" http://192.168.1.27:8080/get_preview?guid=%s">Preview done!</a>' % request.getHeader('xml_get_param_guid')
+                self.Send_Notify(content)
+                return "Send notify"
+
             elif (action == "email"):
                 """
                    Тут приходит уведомление от Camel о том что печатная форма  готова и 
@@ -183,6 +236,7 @@ class Simple(Resource):
                 """ 
                 pass
             return "Test"
+
         elif (self.uri == "check_status"):
             """
                Тут мы обрабатываем проверку статуса печати документа
@@ -191,22 +245,52 @@ class Simple(Resource):
             d.addCallback(self._get_print_status)
             d.addErrback(log.err)
             return NOT_DONE_YET
+
         elif (self.uri == "get_jrxml"):
             """
                Тут мы отдаем данные для JasperReport из которых он сгенерирует печатную форму
             """
-            d = deferLater(reactor, 0, lambda: request)
-            d.addCallback(self._get_jrxml)
-            d.addErrback(log.err)
-            return NOT_DONE_YET
+            log.msg("get JRXML args: %s" % request.args)
+            log.msg("get JRXML Headers: %s" % request.getAllHeaders())
+            guid = request.args.get('guid', [None])[0]
+            log.msg("Request: %s" % request.args)
+            log.msg("Print guids: %s" % print_guids)
+            if (find(lambda GUID: GUID == guid, print_guids)):
+                result = self._get_from_stomp({"type": "queue", "name": "jasper_print_data_%s" % guid})
+                print_guids.remove(guid)
+            else:
+                result = """
+			<xml>
+				Не положили print_data
+				<foo>
+					К терапевту!
+				<foo>
+			</xml>
+                        """
+            request.setHeader("Content-Type", "text/xml")
+            log.msg("Очередь вернула данные в JasperReport: %s" % result)
+            return result
+
         elif (self.uri == "get_preview"):
             """
-               Тут мы отдаем пользователю сгенерированную печатную форму для просмотра
+            Возращает пользователю печатную форму.
+            Возвращаемый тип документа - application/pdf
             """
-            d = deferLater(reactor, 0, lambda: request)
-            d.addCallback(self._get_preview)
-            d.addErrback(log.err)
-            return NOT_DONE_YET
+            log.msg("get preview args: %s" % request.args)
+            log.msg("get preview Headers: %s" % request.getAllHeaders())
+
+            guid = request.args.get('guid')[0]
+            FILE_LOCATION = "/tmp/amq/%s" % guid
+            f = open(FILE_LOCATION)
+            read_data = f.read()
+            request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
+            request.setHeader('Content-Type', "application/pdf")
+            try:
+                os.unlink(FILE_LOCATION)
+            except:
+                pass
+            return read_data
+
         else:
             return "OK"
     
@@ -223,16 +307,19 @@ class Simple(Resource):
             """
                Здесь задаем заголовки необходимые для обработки печатной формы
             """
-            headers = ['XML_GET_PARAM_num_nakl', 'XML_GET_PARAM_date_nakl', 'print_type', 'backup_printer', 'reportUnit', 'XML_URL', 'printer']
 
             conf = {}
 
-            for header in headers:
-                xpath =  xml.xpath('//%s/text()' % header)
-                if len(xpath):
-                    conf[header] = xpath[0]
+            d = datetime.utcnow()
+            unix_timestamp = calendar.timegm(d.utctimetuple())
 
-#            conf['XML_URL'] = conf['XML_URL'] + '?' + 'XML_GET_PARAM_num_nakl=' + conf['XML_GET_PARAM_num_nakl'] + '&' + 'XML_GET_PARAM_date_nakl=' + conf['XML_GET_PARAM_date_nakl']
+            type_of = ['nakladnaya', 'sborochnaya', 'dostavca']
+            
+            for type in type_of:
+                xpath =  xml.xpath('//%s' % type)
+                if len(xpath):
+                    conf["Document-Type"] = xpath[0].tag
+
 
             """
                Разбиваем сообщение на две части - управляющую и данные
@@ -242,25 +329,37 @@ class Simple(Resource):
             """
 
             control_data = xml.xpath('//control_data')
+
+            for child in control_data[0]:
+                if not (child.text is None):
+                   if len(child.text):
+                       conf[child.tag] = child.text
+
             print_data = xml.xpath('//print_data')
+            log.msg("print_data: %s" % print_data)
 
-            stomp_print_data = {"content": etree.tostring(print_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_print_data_%(XML_GET_PARAM_num_nakl)s_%(XML_GET_PARAM_date_nakl)s" % conf}, "conf": conf }
-            stomp_control_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_jasper_control"}, "conf": conf }
-            stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
-            
-            d1 = deferLater(reactor, 0, lambda: stomp_print_data)
-            d1.addCallback(self._put_to_stomp)
-            d1.addErrback(log.err)
+            """
+               Для проверки на стадии отдачи print_data запишем GUID документа в список
+            """
+            if (isinstance(print_data, types.NoneType) == False):
+                log.msg("Print_guids before: %s" % print_guids)
+                print_guids.append(xml.xpath("//XML_GET_PARAM_guid")[0].text)
 
-            d2 = deferLater(reactor, 0, lambda: stomp_control_control_data)
-            d2.addCallback(self._put_to_stomp)
-            d2.addErrback(log.err)
-            
-            d2 = deferLater(reactor, 0, lambda: stomp_control_data)
-            d2.addCallback(self._put_to_stomp)
-            d2.addErrback(log.err)
+                log.msg("Print_guids after: %s" % print_guids)
 
-            return "XML parsed"            
+                stomp_print_data = {"content": etree.tostring(print_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_print_data_%(XML_GET_PARAM_guid)s" % conf}, "conf": conf }
+                stomp_control_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_jasper_control"}, "conf": conf }
+                stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
+
+                stomp_data = {}
+                stomp_data = [stomp_print_data, stomp_control_control_data, stomp_control_data]
+  
+                for item in stomp_data:
+                    Producer().run(item)
+            else:
+                return "Bad comparation!"
+            return "Ok!"
+
         elif (self.uri == "test"):
             log.msg("Headers: %s" % request.getAllHeaders())
             log.msg("Body: %s" % request.content.read())
@@ -268,7 +367,7 @@ class Simple(Resource):
         else:
             return "OK"
 
-
 class Dispatcher(Resource):
+
   def getChild(self, name, request):
       return Simple(name)
