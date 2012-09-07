@@ -252,6 +252,7 @@ class Simple(Resource):
             log.msg("Print args: %s" % request.args)
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
+            filename =  request.args.get('filename', [None])[0]
             action = request.getHeader('print_type')
 
             if (action == "print"):
@@ -260,8 +261,8 @@ class Simple(Resource):
                    нужно ее отправить на печать   
                 """
                 printer = request.getHeader('printer')
-                filename =  request.args.get('filename', [None])[0]
                 path = request.args.get("path", [None])[0]
+
                 d = deferLater(reactor, 0, lambda: {"path": path, "filename": filename, 'printer': printer})
                 d.addCallback(self._print_job)
                 d.addErrback(log.err)
@@ -276,6 +277,7 @@ class Simple(Resource):
                 conf['clientId'] = "CurrentClient"
 
                 content = '<a href=" http://192.168.1.27:8080/get_preview?guid=%s">Preview done!</a>' % request.getHeader('xml_get_param_guid')
+
                 self.Send_Notify(content)
                 return "Send notify"
 
@@ -285,12 +287,14 @@ class Simple(Resource):
                    нужно уведомить получателя об этом и отправить е-мейл
                 """
                 host = 'localhost'
-                sender = request.getHeader('sender')
-                recipients = ['alex@babypages.ru']
+                sender = request.getHeader("sender")
+                recipients = request.getHeader("email_recipients").split(",")
                 message = request.getHeader("message")
                 subject = request.getHeader("subject")
-                attach = r"/usr/local/bin/send_email.sh"
+                attach = r"/tmp/amq/"+filename
+
                 send_email(message, subject, sender, recipients, host, attach)
+
                 return "Задание поставлено"
             return "Test"
 
