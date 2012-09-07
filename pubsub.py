@@ -5,18 +5,17 @@ from twisted.internet import reactor
 from twisted.web.server import NOT_DONE_YET
 from twisted.web.resource import Resource
 from twisted.internet.task import deferLater, defer
-from twisted.application import service, internet
-from twisted.web import server
-from twisted.application.service import Application
-from twisted.application.internet import TCPServer
-from twisted.web.server import Site
 from twisted.python import log
+
+from email.mime.text import MIMEText
+from email.MIMEBase import MIMEBase
+from email.MIMEMultipart import MIMEMultipart
+from email import Encoders
 
 import cups
 
 import urllib
 
-#from stompy.simple import Client
 from stompest.simple import Stomp
 from stompest.async import StompConfig, StompCreator
 
@@ -31,6 +30,15 @@ import json
 
 import types
 
+import sys
+sys.path.append("/usr/local/bin")
+
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from twisted.mail.smtp import sendmail
+import quopri
+
 stringify = etree.XPath("string()")
 
 print_guids = list()
@@ -40,6 +48,49 @@ def find(f, seq):
   for item in seq:
     if f(item): 
       return item
+
+def send_email(message, subject, sender, recipients, host, attach = None):
+    """
+    Send email to one or more addresses.
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = ', '.join(recipients)
+    msg.attach( MIMEText(message) )
+    if not (attach is None):
+        part = MIMEBase('application', "octet-stream")
+        part.set_payload( open(attach,"rb").read() )
+        Encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment; filename="%s"' % os.path.basename(attach))
+        msg.attach(part)
+
+    dfr = sendmail(host, sender, recipients, msg.as_string())
+    def success(r):
+        conf = {}
+        conf['clientId'] = "CurrentClient"
+        message = {}
+        message["body"] = "E-mail был успешно отправлен"
+        message["recipient"] = ["*"]
+        message["group"] = ["*"]
+        message["type"] = "baloon"
+        message["profile"] = "user"
+        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        Producer().run(ControlMessage)
+    def error(e):
+        log.msg(e)
+        conf = {}
+        conf['clientId'] = "CurrentClient"
+        message = {}
+        message["body"] = e
+        message["recipient"] = ["*"]
+        message["group"] = ["*"]
+        message["type"] = "baloon"
+        message["profile"] = "user"
+        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        Producer().run(ControlMessage)
+    dfr.addCallback(success)
+    dfr.addErrback(error)
 
 class Consumer(object):
     
@@ -97,7 +148,7 @@ class Producer(object):
         try:
                 stomp.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
         finally:
-            pass
+                stomp.disconnect()
 
 Consumer().run()
 
@@ -201,16 +252,16 @@ class Simple(Resource):
             log.msg("Print args: %s" % request.args)
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
-            filename =  request.args.get('filename', [None])[0]
             action = request.getHeader('print_type')
-            path = request.args.get("path", [None])[0]
-            printer = request.getHeader('printer')
 
             if (action == "print"):
                 """
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно ее отправить на печать   
                 """
+                printer = request.getHeader('printer')
+                filename =  request.args.get('filename', [None])[0]
+                path = request.args.get("path", [None])[0]
                 d = deferLater(reactor, 0, lambda: {"path": path, "filename": filename, 'printer': printer})
                 d.addCallback(self._print_job)
                 d.addErrback(log.err)
@@ -221,7 +272,6 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                log.msg(request.getAllHeaders())
                 conf = {}
                 conf['clientId'] = "CurrentClient"
 
@@ -233,8 +283,15 @@ class Simple(Resource):
                 """
                    Тут приходит уведомление от Camel о том что печатная форма  готова и 
                    нужно уведомить получателя об этом и отправить е-мейл
-                """ 
-                pass
+                """
+                host = 'localhost'
+                sender = request.getHeader('sender')
+                recipients = ['alex@babypages.ru']
+                message = request.getHeader("message")
+                subject = request.getHeader("subject")
+                attach = r"/usr/local/bin/send_email.sh"
+                send_email(message, subject, sender, recipients, host, attach)
+                return "Задание поставлено"
             return "Test"
 
         elif (self.uri == "check_status"):
