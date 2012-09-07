@@ -233,9 +233,9 @@ class Simple(Resource):
                 
     def _print_job(self, conf = None):
         # get printer name from filename
-        printer_name = unicode(conf['printer'])
-        filename = urllib.url2pathname(conf['filename'])
-        path = "/tmp/amq/" + filename
+        printer_name = conf['printer']
+        filename = conf['filename']
+        path = conf['path']
 
         jobId = self.conn.printFile(printer_name, path, filename, {})
 
@@ -252,7 +252,9 @@ class Simple(Resource):
             log.msg("Print args: %s" % request.args)
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
-            filename =  request.args.get('filename', [None])[0]
+            guid = request.args.get('guid')[0]
+            FILE_LOCATION = "/tmp/amq/%s" % guid
+
             action = request.getHeader('print_type')
 
             if (action == "print"):
@@ -261,11 +263,11 @@ class Simple(Resource):
                    нужно ее отправить на печать   
                 """
                 printer = request.getHeader('printer')
-                path = request.args.get("path", [None])[0]
 
-                d = deferLater(reactor, 0, lambda: {"path": path, "filename": filename, 'printer': printer})
+                d = deferLater(reactor, 0, lambda: {"path": FILE_LOCATION, "filename": guid, 'printer': printer})
                 d.addCallback(self._print_job)
                 d.addErrback(log.err)
+
                 return "Send to print"
 
             elif (action == "preview"):
@@ -276,9 +278,10 @@ class Simple(Resource):
                 conf = {}
                 conf['clientId'] = "CurrentClient"
 
-                content = '<a href=" http://192.168.1.27:8080/get_preview?guid=%s">Preview done!</a>' % request.getHeader('xml_get_param_guid')
+                content = '<a href=" http://192.168.1.27:8080/get_preview?guid=%s">Preview done!</a>' % guid
 
                 self.Send_Notify(content)
+
                 return "Send notify"
 
             elif (action == "email"):
@@ -291,7 +294,7 @@ class Simple(Resource):
                 recipients = request.getHeader("email_recipients").split(",")
                 message = request.getHeader("message")
                 subject = request.getHeader("subject")
-                attach = r"/tmp/amq/"+filename
+                attach = FILE_LOCATION
 
                 send_email(message, subject, sender, recipients, host, attach)
 
