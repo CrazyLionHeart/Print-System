@@ -77,6 +77,11 @@ def send_email(message, subject, sender, recipients, host, attach = None):
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
+        try:
+                os.unlink(attach)
+        except:
+                pass
+
     def error(e):
         log.msg(e)
         conf = {}
@@ -89,8 +94,13 @@ def send_email(message, subject, sender, recipients, host, attach = None):
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
+        try:
+                os.unlink(attach)
+        except:
+                pass
     dfr.addCallback(success)
     dfr.addErrback(error)
+    
 
 class Consumer(object):
     
@@ -177,12 +187,16 @@ class Simple(Resource):
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
 
-    def _put_to_monitor(self, jobId):
+    def _put_to_monitor(self, data = {}):
         """
            Отправляем задание на печать в очередь мониторинга. Сообщения из очереди прилетают с задержкой в 300 секунд
         """
         log.msg("Отправка задания печати на мониторинг")
-        data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': {'AMQ_SCHEDULED_DELAY':300000, 'CamelCharsetName': 'UTF-8'} }
+        conf = data['conf']
+        jobId = data["jobId"]
+        conf['AMQ_SCHEDULED_DELAY'] = 300000
+        conf['CamelCharsetName'] = 'UTF-8'
+        data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
         Producer().run(data)
 
     def _get_from_stomp(self, data = {"type": "queue", "name": "queue_name"}):
@@ -217,19 +231,24 @@ class Simple(Resource):
  	IPP_JOB_STOPPED = 6
         """
         jobId =  request.args.get('jobId', [None])[0]
-        jid = request.args.get('jid', [None])[0]
+        conf = request.getAllHeaders()
         Attributes = self.conn.getJobAttributes(int(jobId))
         # Определяем нужные статусы печати - которые мы не мониторим
         list = [7,9]
         # Если задание успешно напечаталось...
         if not find(lambda state: state == Attributes['job-state'], list):
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
-            self._put_to_monitor(jobId)
+            self._put_to_monitor({"jobId": jobId, "conf": conf})
         else:
             # Тут нужно сделать unlink!!
-            log.msg(request.getAllHeaders())
+            log.msg("All headers after monitoring: %s" % request.getAllHeaders())
             content = "Print done!"
             self.Send_Notify(content)
+#            try:
+#                os.unlink(attach)
+#            except:
+#                pass
+
                 
     def _print_job(self, conf = None):
         # get printer name from filename
@@ -239,7 +258,7 @@ class Simple(Resource):
 
         jobId = self.conn.printFile(printer_name, path, filename, {})
 
-        d = deferLater(reactor, 0, lambda: jobId)
+        d = deferLater(reactor, 0, lambda: {"jobId": jobId, "conf": conf})
         d.addCallback(self._put_to_monitor)
         d.addErrback(log.err)
 
@@ -252,7 +271,7 @@ class Simple(Resource):
             log.msg("Print args: %s" % request.args)
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
-            guid = request.args.get('guid')[0]
+            guid = request.getHeader('xml_get_param_guid')
             FILE_LOCATION = "/tmp/amq/%s" % guid
 
             action = request.getHeader('print_type')
@@ -263,8 +282,11 @@ class Simple(Resource):
                    нужно ее отправить на печать   
                 """
                 printer = request.getHeader('printer')
+                conf = request.getAllHeaders()
+                conf['path'] = FILE_LOCATION
+                conf['filename'] = guid
 
-                d = deferLater(reactor, 0, lambda: {"path": FILE_LOCATION, "filename": guid, 'printer': printer})
+                d = deferLater(reactor, 0, lambda: conf)
                 d.addCallback(self._print_job)
                 d.addErrback(log.err)
 
@@ -343,8 +365,6 @@ class Simple(Resource):
             log.msg("get preview args: %s" % request.args)
             log.msg("get preview Headers: %s" % request.getAllHeaders())
 
-            guid = request.args.get('guid')[0]
-            FILE_LOCATION = "/tmp/amq/%s" % guid
             f = open(FILE_LOCATION)
             read_data = f.read()
             request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
