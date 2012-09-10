@@ -183,6 +183,7 @@ class Simple(Resource):
         message["group"] = ["*"]
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        log.msg("Control Message: %s" % ControlMessage)
         Producer().run(ControlMessage)
 
     def _put_to_monitor(self, data = {}):
@@ -363,6 +364,8 @@ class Simple(Resource):
             log.msg("get preview args: %s" % request.args)
             log.msg("get preview Headers: %s" % request.getAllHeaders())
 
+            guid = request.args("guid", [None])[0]
+            FILE_LOCATION = "/tmp/amq/%s" % guid
             f = open(FILE_LOCATION)
             read_data = f.read()
             request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
