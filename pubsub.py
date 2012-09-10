@@ -49,6 +49,7 @@ def find(f, seq):
     if f(item): 
       return item
 
+
 def send_email(message, subject, sender, recipients, host, attach = None):
     """
     Send email to one or more addresses.
@@ -70,10 +71,9 @@ def send_email(message, subject, sender, recipients, host, attach = None):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = "E-mail был успешно отправлен"
+        message["body"] = {'func_name': 'toastr.success', 'func_args': '"Тело балуна", "Заголовок балуна"'}
         message["recipient"] = ["*"]
         message["group"] = ["*"]
-        message["type"] = "baloon"
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
@@ -82,7 +82,7 @@ def send_email(message, subject, sender, recipients, host, attach = None):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = e
+        message["body"] = {'func_name': 'toastr.success', 'func_args': e +', "Заголовок балуна"'}
         message["recipient"] = ["*"]
         message["group"] = ["*"]
         message["type"] = "baloon"
@@ -123,10 +123,9 @@ class Consumer(object):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = frame['body']
+        message["body"] = {'func_name': 'toastr.error', 'func_args': frame['body'] + ', "Заголовок балуна"'}
         message["recipient"] = ["*"]
         message["group"] = ["*"]
-        message["type"] = "baloon"
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
@@ -169,10 +168,9 @@ class Simple(Resource):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = content
+        message["body"] = {'func_name': 'toastr.success', 'func_args': content + ', "Заголовок балуна"'}
         message["recipient"] = [recipient]
         message["group"] = ["*"]
-        message["type"] = "baloon"
         message["profile"] = "user"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         Producer().run(ControlMessage)
