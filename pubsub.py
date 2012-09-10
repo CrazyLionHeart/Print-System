@@ -364,7 +364,7 @@ class Simple(Resource):
             log.msg("get preview args: %s" % request.args)
             log.msg("get preview Headers: %s" % request.getAllHeaders())
 
-            guid = request.args("guid", [None])[0]
+            guid = request.args.get("guid", [None])[0]
             FILE_LOCATION = "/tmp/amq/%s" % guid
             f = open(FILE_LOCATION)
             read_data = f.read()
