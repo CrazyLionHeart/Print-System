@@ -178,7 +178,7 @@ class Simple(Resource):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = {'func_name': 'toastr.success', 'func_args': content + ', "Заголовок балуна"'}
+        message["body"] = {'func_name': 'toastr.success', 'func_args': [content, "Заголовок балуна"]}
         message["recipient"] = [recipient]
         message["group"] = ["*"]
         message["profile"] = "user"
