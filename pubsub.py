@@ -370,6 +370,7 @@ class Simple(Resource):
             read_data = f.read()
             request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
             request.setHeader('Content-Type', "application/pdf")
+            request.setHeader('Content-Disposition: inline; filename=%s.pdf' % guid)
             try:
                 os.unlink(FILE_LOCATION)
             except:
