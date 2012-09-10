@@ -6,6 +6,7 @@ from twisted.web.server import NOT_DONE_YET
 from twisted.web.resource import Resource
 from twisted.internet.task import deferLater, defer
 from twisted.python import log
+from twisted.web.static import File
 
 from email.mime.text import MIMEText
 from email.MIMEBase import MIMEBase
@@ -366,16 +367,12 @@ class Simple(Resource):
 
             guid = request.args.get("guid", [None])[0]
             FILE_LOCATION = "/tmp/amq/%s" % guid
-            f = open(FILE_LOCATION)
-            read_data = f.read()
-            request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
-            request.setHeader('Content-Type', "application/pdf")
-            request.setHeader('Content-Disposition: inline; filename=%s.pdf' % guid)
+            File(FILE_LOCATION)
             try:
                 os.unlink(FILE_LOCATION)
             except:
                 pass
-            return read_data
+            return File(FILE_LOCATION)
 
         else:
             return "OK"
