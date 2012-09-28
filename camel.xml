@@ -40,24 +40,7 @@
     <packageScan>
       <package>org.foo.bar</package>
     </packageScan>
-    <!--
-    <route id="input_jasper">
-      <from uri="activemq:queue:jasper_input"/>
-      <split>
-        <xpath>//control_data</xpath>
-        <multicast>
-          <to uri="activemq:queue:jasper_control_data" />
-          <to uri="activemq:queue:jasper_jasper_control" />
-        </multicast>
-      </split>
-      <split>
-        <xpath>//print_data</xpath>
-        <recipientList>
-          <simple>activemq:queue:jasper_print_data_${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
-        </recipientList>
-      </split>
-    </route>
--->
+
     <route id="control_package">
       <from uri="activemq:queue:jasper_control_data"/>
       <setHeader headerName="CamelHttpMethod">
@@ -75,8 +58,11 @@
       <setHeader headerName="reportUnit">
         <simple>${in.headers.reportUnit}</simple>
       </setHeader>
+      <setHeader headerName="Document-Type">
+        <simple>${in.headers.Document-Type}</simple>
+      </setHeader>
       <recipientList>
-        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_date_nakl=${headers.XML_GET_PARAM_date_nakl}&amp;XML_GET_PARAM_num_nakl=${in.headers.XML_GET_PARAM_num_nakl}&amp;XML_URL=${in.headers.XML_URL}</simple>
+        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_guid=${headers.XML_GET_PARAM_guid}&amp;XML_URL=${headers.XML_URL}</simple>
       </recipientList>
       <choice>
         <when>
@@ -84,8 +70,11 @@
           <setHeader headerName="CamelHttpMethod">
             <constant>GET</constant>
           </setHeader>
+          <setHeader headerName="CamelFileName">
+            <simple>${headers.XML_GET_PARAM_GUID}.pdf</simple>
+          </setHeader>
           <setHeader headerName="Recipient">
-            <simple>file:/tmp/amq/?fileName=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl},http://localhost:8080/print/?path=/tmp/amq/${in.headers.num_nakl}_${in.headers.date_nakl}&amp;filename=${in.headers.XML_GET_PARAM_num_nakl}_${in.headers.XML_GET_PARAM_date_nakl}</simple>
+            <simple>file:/tmp/amq,http://localhost:8080/print/?filename=${headers.XML_GET_PARAM_GUID}</simple>
           </setHeader>
           <recipientList delimiter=",">
             <header>Recipient</header>
@@ -96,9 +85,9 @@
         </otherwise>
       </choice>
     </route>
+
     <route id="check_printed">
       <from uri="activemq:queue:twisted_status"/>
-      <to uri="log:org.apache.camel.example?level=INFO&amp;showHeaders=true"/>
       <setHeader headerName="CamelHttpMethod">
         <constant>GET</constant>
       </setHeader>
