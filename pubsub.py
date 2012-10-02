@@ -6,7 +6,9 @@ from twisted.web.server import NOT_DONE_YET
 from twisted.web.resource import Resource
 from twisted.internet.task import deferLater, defer
 from twisted.python import log
+from twisted.web import static
 from twisted.web.static import File
+import twisted.web.error as error
 
 from email.mime.text import MIMEText
 from email.MIMEBase import MIMEBase
@@ -34,12 +36,6 @@ import types
 import sys
 sys.path.append("/usr/local/bin")
 
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-from twisted.mail.smtp import sendmail
-import quopri
-
 stringify = etree.XPath("string()")
 
 print_guids = list()
@@ -50,58 +46,44 @@ def find(f, seq):
     if f(item): 
       return item
 
-
-def send_email(message, subject, sender, recipients, host, attach = None):
+def send_email(message_text, subject, sender, recipients, host, attach = None):
     """
     Send email to one or more addresses.
     """
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = ', '.join(recipients)
-    msg.attach( MIMEText(message) )
+
+    import mailer
+
+    message = mailer.Message()
+    message.From = sender
+    message.To = recipients
+    message.Subject = subject
+    message.Body = message_text
     if not (attach is None):
-        part = MIMEBase('application', "octet-stream")
-        part.set_payload( open(attach,"rb").read() )
-        Encoders.encode_base64(part)
-        part.add_header('Content-Disposition', 'attachment; filename="%s"' % os.path.basename(attach))
-        msg.attach(part)
+        message.attach(attach)
 
-    dfr = sendmail(host, sender, recipients, msg.as_string())
-    def success(r):
-        conf = {}
-        conf['clientId'] = "CurrentClient"
-        message = {}
-        message["body"] = {'func_name': 'toastr.success', 'func_args': ["Тело балуна", "Заголовок балуна"]}
-        message["recipient"] = ["*"]
-        message["group"] = ["*"]
-        message["profile"] = "user"
-        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
-        Producer().run(ControlMessage)
-        try:
-                os.unlink(attach)
-        except:
-                pass
+    mailer = mailer.Mailer('localhost')
 
-    def error(e):
-        log.msg(e)
-        conf = {}
-        conf['clientId'] = "CurrentClient"
-        message = {}
-        message["body"] = {'func_name': 'toastr.success', 'func_args': [e, "Заголовок балуна"]}
-        message["recipient"] = ["*"]
-        message["group"] = ["*"]
-        message["type"] = "baloon"
-        message["profile"] = "user"
-        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
-        Producer().run(ControlMessage)
-        try:
-                os.unlink(attach)
-        except:
-                pass
-    dfr.addCallback(success)
-    dfr.addErrback(error)
+    d = deferLater(reactor, 0, mailer.send, message)
+    d.addErrback(log.err)
+    return d
+
     
+
+def Send_Notify(func_name = "window.toastr.success", func_args = [], recipient = ["*"], group = ["*"], profile = "user", callbackArgs = None, errbackArgs = None):
+        log.msg("Отправка уведомления пользователю")
+        if not (callbackArgs is None):
+            func_name, func_args, recipient, group = callbackArgs
+        if not (errbackArgs is None):
+            func_name, func_args, recipient, group = errbackArgs
+        conf = {}
+        message = {}
+        message["body"] = {'func_name': func_name , 'func_args': func_args}
+        message["recipient"] = recipient
+        message["group"] = group
+        message["profile"] = profile
+        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
+        log.msg("Control Message: %s" % ControlMessage)
+        Producer().run(ControlMessage)
 
 class Consumer(object):
     
@@ -134,7 +116,7 @@ class Consumer(object):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = {'func_name': 'toastr.error', 'func_args': [ frame['body'], "Заголовок балуна"]}
+        message["body"] = {'func_name': 'window.toastr.error', 'func_args': ["Ошибка генерации документа", "Ошибка"]}
         message["recipient"] = ["*"]
         message["group"] = ["*"]
         message["profile"] = "user"
@@ -174,27 +156,16 @@ class Simple(Resource):
         self.stomp = Stomp('localhost', 61613)
         self.stomp.connect()
 
-    def Send_Notify(self, content, recipient = "*"):
-        log.msg("Отправка уведомления пользователю")
-        conf = {}
-        conf['clientId'] = "CurrentClient"
-        message = {}
-        message["body"] = {'func_name': 'toastr.success', 'func_args': [content, "Заголовок балуна"]}
-        message["recipient"] = [recipient]
-        message["group"] = ["*"]
-        message["profile"] = "user"
-        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
-        log.msg("Control Message: %s" % ControlMessage)
-        Producer().run(ControlMessage)
-
     def _put_to_monitor(self, data = {}):
         """
            Отправляем задание на печать в очередь мониторинга. Сообщения из очереди прилетают с задержкой в 300 секунд
         """
         log.msg("Отправка задания печати на мониторинг")
-        conf = data['conf']
+        conf = {}
+        conf['message_group'] = data['conf']['message_group']
+        conf['message_recipient'] = data['conf']['message_recipient']
         jobId = data["jobId"]
-        conf['AMQ_SCHEDULED_DELAY'] = 300000
+        conf['AMQ_SCHEDULED_DELAY'] = 3000
         conf['CamelCharsetName'] = 'UTF-8'
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
         Producer().run(data)
@@ -234,21 +205,32 @@ class Simple(Resource):
         conf = request.getAllHeaders()
         Attributes = self.conn.getJobAttributes(int(jobId))
         # Определяем нужные статусы печати - которые мы не мониторим
-        list = [7,9]
+        success = [7,9]
+        errors = [6,8,4]
+        recipient =  request.getHeader('message_recipient').split(",")
+        group = request.getHeader('message_group').split(",")
+
         # Если задание успешно напечаталось...
-        if not find(lambda state: state == Attributes['job-state'], list):
+        if (Attributes['job-state'] in success):
+            func_name = "window.toastr.success"
+            func_args = ["Документ успешно напечатан!", "Печать завершена"]
+            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d.addErrback(log.err)
+
+        elif (Attributes['job-state'] in errors):
+            func_name = "window.toastr.error"
+            func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
+            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d.addErrback(log.err)
+        else:
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor({"jobId": jobId, "conf": conf})
-        else:
-            # Тут нужно сделать unlink!!
-            log.msg("All headers after monitoring: %s" % request.getAllHeaders())
-            content = "Print done!"
-            self.Send_Notify(content)
-#            try:
-#                os.unlink(attach)
-#            except:
-#                pass
-
+            func_name = "window.toastr.info"
+            func_args = ["Печать еще не завершена.", "Идет печать"]
+            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d.addErrback(log.err)
+        request.write("Checked")
+        request.finish()
                 
     def _print_job(self, conf = None):
         # get printer name from filename
@@ -258,8 +240,7 @@ class Simple(Resource):
 
         jobId = self.conn.printFile(printer_name, path, filename, {})
 
-        d = deferLater(reactor, 0, lambda: {"jobId": jobId, "conf": conf})
-        d.addCallback(self._put_to_monitor)
+        d = deferLater(reactor, 0, self._put_to_monitor, {"jobId": jobId, "conf": conf})
         d.addErrback(log.err)
 
     def render_GET(self, request):
@@ -272,7 +253,7 @@ class Simple(Resource):
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
             guid = request.getHeader('xml_get_param_guid')
-            FILE_LOCATION = "/tmp/amq/%s" % guid
+            FILE_LOCATION = "/tmp/amq/%s.pdf" % guid
 
             action = request.getHeader('print_type')
 
@@ -286,8 +267,7 @@ class Simple(Resource):
                 conf['path'] = FILE_LOCATION
                 conf['filename'] = guid
 
-                d = deferLater(reactor, 0, lambda: conf)
-                d.addCallback(self._print_job)
+                d = deferLater(reactor, 0, self._print_job, conf)
                 d.addErrback(log.err)
 
                 return "Send to print"
@@ -297,13 +277,13 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                conf = {}
-                conf['clientId'] = "CurrentClient"
-
-                content = '<a href=" http://192.168.1.27:8080/get_preview?guid=%s">Preview done!</a>' % guid
-
-                self.Send_Notify(content)
-
+                content = '<a target="_blank" href=" http://192.168.1.227:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % guid
+                func_name = "window.toastr.success"
+                func_args = [content, "Предпросмотр подготовлен"]
+                recipient =  request.getHeader('message_recipient').split(",")
+                group = request.getHeader('message_group').split(",")
+                d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+                d.addErrback(log.err)
                 return "Send notify"
 
             elif (action == "email"):
@@ -313,12 +293,18 @@ class Simple(Resource):
                 """
                 host = 'localhost'
                 sender = request.getHeader("sender")
-                recipients = request.getHeader("email_recipients").split(",")
+                recipients = request.getHeader("email_recipients")
                 message = request.getHeader("message")
                 subject = request.getHeader("subject")
                 attach = FILE_LOCATION
 
-                send_email(message, subject, sender, recipients, host, attach)
+                recipient =  request.getHeader('message_recipient').split(",")
+                group = request.getHeader('message_group').split(",")
+
+
+                df = send_email(message, subject, sender, recipients, host, attach)
+                df.addCallback(Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, group))
+                df.addErrback(Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, group))
 
                 return "Задание поставлено"
             return "Test"
@@ -327,8 +313,7 @@ class Simple(Resource):
             """
                Тут мы обрабатываем проверку статуса печати документа
             """
-            d = deferLater(reactor, 0, lambda: request)
-            d.addCallback(self._get_print_status)
+            d = deferLater(reactor, 0, self._get_print_status, request)
             d.addErrback(log.err)
             return NOT_DONE_YET
 
@@ -366,14 +351,14 @@ class Simple(Resource):
             log.msg("get preview Headers: %s" % request.getAllHeaders())
 
             guid = request.args.get("guid", [None])[0]
-            FILE_LOCATION = "/tmp/amq/%s" % guid
-            File(FILE_LOCATION)
-            try:
-                os.unlink(FILE_LOCATION)
-            except:
-                pass
-            return File(FILE_LOCATION)
+            FILE_LOCATION = "/tmp/amq/%s.pdf" % guid
+            request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
+            request.setHeader('Content-Disposition', 'inline')
+            file = static.File(FILE_LOCATION, defaultType='application/pdf')
+            return file.render(request)
 
+        elif (self.uri == "send_email"):
+            return "E-mail NOT sended. Just demo"
         else:
             return "OK"
     
@@ -385,13 +370,21 @@ class Simple(Resource):
                Валидируем XML
                Отправляем XML на обработку в очередь
             """
-            xml = etree.fromstring(request.args.get('xml', [None])[0])
+            xml_args = request.args.get('xml', [None])[0]
+            if xml_args is None:
+                page = error.NoResource(message="Нет данных!")
+                return page.render(request)
+            else:
+                xml = etree.fromstring(request.args.get('xml', [None])[0])
 
             """
                Здесь задаем заголовки необходимые для обработки печатной формы
             """
 
             conf = {}
+
+            ## Установим заголовок для Camel
+            conf["CamelCharsetName"] = "UTF-8"
 
             d = datetime.utcnow()
             unix_timestamp = calendar.timegm(d.utctimetuple())
@@ -403,10 +396,19 @@ class Simple(Resource):
                 if len(xpath):
                     conf["Document-Type"] = xpath[0].tag
 
+#            if not ("message_recipient" in conf):
+#                return "Кто будет получать сообщение о задании???"
+
+#            if not ("message_group" in conf):
+#                return "Какая группа будет получать сообщение о задании???"
+
+#            if not ("reportUnit" in conf):
+#                return "Укажите шаблон для генерации!!!"
+
 
             """
                Разбиваем сообщение на две части - управляющую и данные
-               Упаправляющую часть ...
+               Управляющую часть ...
                Часть с данным откладываем в ActiveMQ пока JasperReport
                не придет за ней
             """
@@ -420,6 +422,21 @@ class Simple(Resource):
 
             print_data = xml.xpath('//print_data')
             log.msg("print_data: %s" % print_data)
+
+#            if ( conf["print_type"] == "print" ):
+#                if not ("printer" in conf):
+#                   return "Укажите принтер!"
+#            elif ( conf["print_type"] == "preview" ):
+#                pass
+#            elif ( conf["print_type"] == "email" ):
+#                if not ("sender" in conf ):
+#                    return "Укажите отправителя сообщения"
+#                if not (" email_recipients" in conf ):
+#                    return "Укажите получателей сообщения"
+#                if not ( "message" in conf ):
+#                    return "Задайте сообщения к e-mail на аглицкой мове"
+#                if not ( "subject" in conf ):
+#                    return "Укажите тему письма"
 
             """
                Для проверки на стадии отдачи print_data запишем GUID документа в список
