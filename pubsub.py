@@ -116,7 +116,7 @@ class Consumer(object):
         conf = {}
         conf['clientId'] = "CurrentClient"
         message = {}
-        message["body"] = {'func_name': 'window.toastr.error', 'func_args': [ frame['body'], "Заголовок балуна"]}
+        message["body"] = {'func_name': 'window.toastr.error', 'func_args': ["Ошибка генерации документа", "Ошибка"]}
         message["recipient"] = ["*"]
         message["group"] = ["*"]
         message["profile"] = "user"
@@ -161,7 +161,9 @@ class Simple(Resource):
            Отправляем задание на печать в очередь мониторинга. Сообщения из очереди прилетают с задержкой в 300 секунд
         """
         log.msg("Отправка задания печати на мониторинг")
-        conf = data['conf']
+        conf = {}
+        conf['message_group'] = data['conf']['message_group']
+        conf['message_recipient'] = data['conf']['message_recipient']
         jobId = data["jobId"]
         conf['AMQ_SCHEDULED_DELAY'] = 3000
         conf['CamelCharsetName'] = 'UTF-8'
@@ -201,35 +203,34 @@ class Simple(Resource):
         """
         jobId =  request.args.get('jobId', [None])[0]
         conf = request.getAllHeaders()
-        conf.remove("jmsdestination")
         Attributes = self.conn.getJobAttributes(int(jobId))
         # Определяем нужные статусы печати - которые мы не мониторим
         success = [7,9]
         errors = [6,8,4]
+        recipient =  request.getHeader('message_recipient').split(",")
+        group = request.getHeader('message_group').split(",")
+
         # Если задание успешно напечаталось...
-        if not find(lambda state: state == Attributes['job-state'], success):
-            # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
-            self._put_to_monitor({"jobId": jobId, "conf": conf})
-        elif not find(lambda state: state == Attributes['job-state'], errors):
+        if (Attributes['job-state'] in success):
+            func_name = "window.toastr.success"
+            func_args = ["Документ успешно напечатан!", "Печать завершена"]
+            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d.addErrback(log.err)
+
+        elif (Attributes['job-state'] in errors):
             func_name = "window.toastr.error"
-            func_args = ["Во время печати документа произоошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
-            recipient =  request.getHeader('message_recipient').split(",")
-            group = request.getHeader('message_group').split(",")
+            func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
             d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
             d.addErrback(log.err)
         else:
-            func_name = "window.toastr.success"
-            func_args = ["Документ успешно напечатан!", "Печать завершена"]
-            recipient =  request.getHeader('message_recipient').split(",")
-            group = request.getHeader('message_group').split(",")
+            # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
+            self._put_to_monitor({"jobId": jobId, "conf": conf})
+            func_name = "window.toastr.info"
+            func_args = ["Печать еще не завершена.", "Идет печать"]
             d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
             d.addErrback(log.err)
-             # Тут нужно сделать unlink!!
-#            try:
-#                os.unlink(attach)
-#            except:
-#                pass
-
+        request.write("Checked")
+        request.finish()
                 
     def _print_job(self, conf = None):
         # get printer name from filename
@@ -239,8 +240,7 @@ class Simple(Resource):
 
         jobId = self.conn.printFile(printer_name, path, filename, {})
 
-        d = deferLater(reactor, 0, lambda: {"jobId": jobId, "conf": conf})
-        d.addCallback(self._put_to_monitor)
+        d = deferLater(reactor, 0, self._put_to_monitor, {"jobId": jobId, "conf": conf})
         d.addErrback(log.err)
 
     def render_GET(self, request):
@@ -267,7 +267,7 @@ class Simple(Resource):
                 conf['path'] = FILE_LOCATION
                 conf['filename'] = guid
 
-                d = deferLater(reactor, 0, _print_job, conf)
+                d = deferLater(reactor, 0, self._print_job, conf)
                 d.addErrback(log.err)
 
                 return "Send to print"
@@ -277,7 +277,7 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                content = '<a target="_blank" href=" http://192.168.1.27:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % guid
+                content = '<a target="_blank" href=" http://192.168.1.227:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % guid
                 func_name = "window.toastr.success"
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
@@ -313,7 +313,7 @@ class Simple(Resource):
             """
                Тут мы обрабатываем проверку статуса печати документа
             """
-            d = deferLater(reactor, 0, _get_print_status, request)
+            d = deferLater(reactor, 0, self._get_print_status, request)
             d.addErrback(log.err)
             return NOT_DONE_YET
 
