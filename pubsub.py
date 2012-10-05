@@ -400,16 +400,6 @@ class Simple(Resource):
                 if len(xpath):
                     conf["Document-Type"] = xpath[0].tag
 
-#            if not ("message_recipient" in conf):
-#                return "Кто будет получать сообщение о задании???"
-
-#            if not ("message_group" in conf):
-#                return "Какая группа будет получать сообщение о задании???"
-
-#            if not ("reportUnit" in conf):
-#                return "Укажите шаблон для генерации!!!"
-
-
             """
                Разбиваем сообщение на две части - управляющую и данные
                Управляющую часть ...
@@ -426,21 +416,6 @@ class Simple(Resource):
 
             print_data = xml.xpath('//print_data')
             log.msg("print_data: %s" % print_data)
-
-#            if ( conf["print_type"] == "print" ):
-#                if not ("printer" in conf):
-#                   return "Укажите принтер!"
-#            elif ( conf["print_type"] == "preview" ):
-#                pass
-#            elif ( conf["print_type"] == "email" ):
-#                if not ("sender" in conf ):
-#                    return "Укажите отправителя сообщения"
-#                if not (" email_recipients" in conf ):
-#                    return "Укажите получателей сообщения"
-#                if not ( "message" in conf ):
-#                    return "Задайте сообщения к e-mail на аглицкой мове"
-#                if not ( "subject" in conf ):
-#                    return "Укажите тему письма"
 
             """
                Для проверки на стадии отдачи print_data запишем GUID документа в список
