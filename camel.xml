@@ -61,17 +61,32 @@
       <setHeader headerName="Document-Type">
         <simple>${in.headers.Document-Type}</simple>
       </setHeader>
+      <setHeader headerName="output">
+        <simple>${in.headers.output}</simple>
+      </setHeader>
       <recipientList>
-        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=pdf&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_guid=${headers.XML_GET_PARAM_guid}&amp;XML_URL=${headers.XML_URL}</simple>
+        <simple>http://192.168.1.196:8080/jasperserver/flow.html?_flowId=viewReportFlow&amp;reportUnit=${in.headers.reportUnit}&amp;output=${in.headers.output}&amp;reportLocale=UTF-8&amp;j_username=jasperadmin&amp;j_password=jasperadmin&amp;XML_GET_PARAM_guid=${headers.XML_GET_PARAM_guid}&amp;XML_URL=${headers.XML_URL}</simple>
       </recipientList>
+      <setHeader headerName="CamelFileName">
+            <simple>${headers.XML_GET_PARAM_GUID}.${in.headers.output}</simple>
+      </setHeader>
       <choice>
         <when>
           <simple>${in.headers.Content-Type} == 'application/pdf'</simple>
           <setHeader headerName="CamelHttpMethod">
             <constant>GET</constant>
           </setHeader>
-          <setHeader headerName="CamelFileName">
-            <simple>${headers.XML_GET_PARAM_GUID}.pdf</simple>
+          <setHeader headerName="Recipient">
+            <simple>file:/tmp/amq,http://localhost:8080/print/?filename=${headers.XML_GET_PARAM_GUID}</simple>
+          </setHeader>
+          <recipientList delimiter=",">
+            <header>Recipient</header>
+          </recipientList>
+        </when>
+	<when>
+          <simple>${in.headers.Content-Type} == 'application/xls'</simple>
+          <setHeader headerName="CamelHttpMethod">
+            <constant>GET</constant>
           </setHeader>
           <setHeader headerName="Recipient">
             <simple>file:/tmp/amq,http://localhost:8080/print/?filename=${headers.XML_GET_PARAM_GUID}</simple>
@@ -81,7 +96,12 @@
           </recipientList>
         </when>
         <otherwise>
-          <to uri="activemq:queue:jasper_error"/>
+	  <setHeader headerName="Recipient">
+            <simple>file:/tmp/amq_error,activemq:queue:jasper_error</simple>
+          </setHeader>
+          <recipientList delimiter=",">
+            <header>Recipient</header>
+          </recipientList>
         </otherwise>
       </choice>
     </route>
@@ -95,5 +115,6 @@
         <simple>http://localhost:8080/check_status/?jobId=${body}</simple>
       </recipientList>
     </route>
+
     </camelContext>
 </beans>

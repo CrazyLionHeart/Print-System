@@ -253,7 +253,10 @@ class Simple(Resource):
             log.msg("Print Headers: %s" % request.getAllHeaders())
 
             guid = request.getHeader('xml_get_param_guid')
-            FILE_LOCATION = "/tmp/amq/%s.pdf" % guid
+            type = request.getHeader('output')
+            FILE_NAME = "%(filename)s.%(type)s" % {'filename': guid, 'type': type }
+
+            FILE_LOCATION = "/tmp/amq/%s" % FILE_NAME
 
             action = request.getHeader('print_type')
 
@@ -277,7 +280,7 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                content = '<a target="_blank" href=" http://192.168.1.227:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % guid
+                content = '<a target="_blank" href=" http://192.168.1.227:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % FILE_NAME
                 func_name = "window.toastr.success"
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
@@ -351,10 +354,11 @@ class Simple(Resource):
             log.msg("get preview Headers: %s" % request.getAllHeaders())
 
             guid = request.args.get("guid", [None])[0]
-            FILE_LOCATION = "/tmp/amq/%s.pdf" % guid
+
+            FILE_LOCATION = "/tmp/amq/%s" % guid
             request.setHeader('Content-Length',  str(os.path.getsize(FILE_LOCATION)))
             request.setHeader('Content-Disposition', 'inline')
-            file = static.File(FILE_LOCATION, defaultType='application/pdf')
+            file = static.File(FILE_LOCATION)
             return file.render(request)
 
         elif (self.uri == "send_email"):
@@ -446,8 +450,9 @@ class Simple(Resource):
                 print_guids.append(xml.xpath("//XML_GET_PARAM_guid")[0].text)
 
                 log.msg("Print_guids after: %s" % print_guids)
-
+                conf['JMSExpiration'] = 5000
                 stomp_print_data = {"content": etree.tostring(print_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_print_data_%(XML_GET_PARAM_guid)s" % conf}, "conf": conf }
+                del conf['JMSExpiration']
                 stomp_control_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_jasper_control"}, "conf": conf }
                 stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
 
