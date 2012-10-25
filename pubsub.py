@@ -265,13 +265,24 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно ее отправить на печать   
                 """
-                printer = request.getHeader('printer')
                 conf = request.getAllHeaders()
                 conf['path'] = FILE_LOCATION
                 conf['filename'] = guid
+                
+                statinfo = os.stat(FILE_LOCATION)
+                if (statinfo.st_size > 1024L):
+                    d = deferLater(reactor, 0, self._print_job, conf)
+                    d.addErrback(log.err)
+                else:
+                    recipient =  conf['message_recipient'].split(",")
+                    group = conf['message_group'].split(",")
 
-                d = deferLater(reactor, 0, self._print_job, conf)
-                d.addErrback(log.err)
+                    # Если задание успешно напечаталось...
+                    func_name = "window.toastr.error"
+                    func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
+                    d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+                    d.addErrback(log.err)
+
 
                 return "Send to print"
 
@@ -400,6 +411,15 @@ class Simple(Resource):
                 if len(xpath):
                     conf["Document-Type"] = xpath[0].tag
 
+#            if not ("message_recipient" in conf):
+#                return "Кто будет получать сообщение о задании???"
+
+#            if not ("message_group" in conf):
+#                return "Какая группа будет получать сообщение о задании???"
+
+#            if not ("reportUnit" in conf):
+#                return "Укажите шаблон для генерации!!!"
+
 
             """
                Разбиваем сообщение на две части - управляющую и данные
@@ -418,6 +438,20 @@ class Simple(Resource):
             print_data = xml.xpath('//print_data')
             log.msg("print_data: %s" % print_data)
 
+#            if ( conf["print_type"] == "print" ):
+#                if not ("printer" in conf):
+#                   return "Укажите принтер!"
+#            elif ( conf["print_type"] == "preview" ):
+#                pass
+#            elif ( conf["print_type"] == "email" ):
+#                if not ("sender" in conf ):
+#                    return "Укажите отправителя сообщения"
+#                if not (" email_recipients" in conf ):
+#                    return "Укажите получателей сообщения"
+#                if not ( "message" in conf ):
+#                    return "Задайте сообщения к e-mail на аглицкой мове"
+#                if not ( "subject" in conf ):
+#                    return "Укажите тему письма"
 
             """
                Для проверки на стадии отдачи print_data запишем GUID документа в список
