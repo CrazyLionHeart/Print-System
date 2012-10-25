@@ -36,6 +36,8 @@ import types
 import sys
 sys.path.append("/usr/local/bin")
 
+from urlparse import *
+
 stringify = etree.XPath("string()")
 
 print_guids = list()
@@ -291,7 +293,11 @@ class Simple(Resource):
                    Тут приходит уведомление от Camel о том что печатная форма  готова и
                    нужно уведомить получателя о этом   
                 """
-                content = '<a target="_blank" href=" http://192.168.1.227:8080/get_preview?guid=%s">Посмотреть документ</a>&#8230;' % FILE_NAME
+                scheme, netloc, path, _, _ = urlsplit(request.getHeader('XML_URL'))
+                new_path = "/get_preview"
+                query_string = "guid=%s" % FILE_NAME
+                new_url = urlunsplit((scheme, netloc, new_path, query_string, _))
+                content = '<a target="_blank" href="%s">Посмотреть документ</a>&#8230;' % new_url
                 func_name = "window.toastr.success"
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
