@@ -33,6 +33,8 @@ import json
 
 import types
 
+import requests
+
 import sys
 sys.path.append("/usr/local/bin")
 
@@ -345,19 +347,23 @@ class Simple(Resource):
             log.msg("get JRXML Headers: %s" % request.getAllHeaders())
             guid = request.args.get('guid', [None])[0]
             log.msg("Request: %s" % request.args)
-            log.msg("Print guids: %s" % print_guids)
-            if (find(lambda GUID: GUID == guid, print_guids)):
-                result = self._get_from_stomp({"type": "queue", "name": "jasper_print_data_%s" % guid})
-                print_guids.remove(guid)
+            # Удаляем гланды через жопу - проверяем существует ли очередь с данными
+            url = "http://localhost:8161/admin/xml/queues.jsp"
+
+            # Получаем текущий статус очередей в ActiveMQ
+            res = requests.get(url)
+            queues_status = xml = etree.fromstring(res.content)
+            xpath = queues_status.xpath("//queue[@name='jasper_print_data_%s']/stats" % guid)
+            if not (xpath is None):
+                for child in xpath:
+                    if (child.attrib['size'] != 0 ):
+                        result = self._get_from_stomp({"type": "queue", "name": "jasper_print_data_%s" % guid})
+                    else:
+                        result = """<xml>Не положили print_data<foo>К терапевту!<foo></xml>"""
+                        log.msg("Нет данный в print_data в очереди")
             else:
-                result = """
-			<xml>
-				Не положили print_data
-				<foo>
-					К терапевту!
-				<foo>
-			</xml>
-                        """
+                result = """<xml>Не положили print_data<foo>К терапевту!<foo></xml>"""
+                log.msg("Нет данный в print_data в очереди")
             request.setHeader("Content-Type", "text/xml")
             log.msg("Очередь вернула данные в JasperReport: %s" % result)
             return result
