@@ -386,6 +386,13 @@ class Simple(Resource):
 
         elif (self.uri == "send_email"):
             return "E-mail NOT sended. Just demo"
+        elif (self.uri == "printers"):
+             printer = request.args.get('printer', [None])[0]
+             request.setHeader("Content-Type", "application/json")
+             if printer is None:
+                 return "%s" % json.dumps(self.conn.getPrinters(), sort_keys=True, indent=4)
+             else:
+                 return "%s" % json.dumps(self.conn.getPrinterAttributes(printer), sort_keys=True, indent=4)
         else:
             return "OK"
     
