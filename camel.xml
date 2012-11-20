@@ -40,6 +40,11 @@
     <packageScan>
       <package>org.foo.bar</package>
     </packageScan>
+    
+    <route id="office_to_sklad">
+      <from uri="activemq:queue:office_to_sklad"/>
+      <to uri="http:localhost:80/php/action.php"/>
+    </route> 
 
     <route id="control_package">
       <from uri="activemq:queue:jasper_control_data"/>
@@ -116,5 +121,35 @@
       </recipientList>
     </route>
 
+
+   <route id="print_system">
+	<from uri="activemq:queue:print_system" />
+	<setHeader headerName="CamelHttpMethod">
+                <constant>POST</constant>
+        </setHeader>
+	<to uri="http://127.0.0.1:8080/print" />
+   </route>
+
     </camelContext>
+
+
+  <!-- PostgreSQL component -->
+ <!-- <bean class="org.springframework.jdbc.datasource.DriverManagerDataSource" id="myDS2">
+    <property name="driverClassName" value="org.postgresql.Driver"/>
+    <property name="url" value="jdbc:postgresql://localhost:5432/Sklad"/>
+    <property name="username" value="postgres"/>
+    <property name="password" value="Zona_baby009"/>
+  </bean> -->
+
+	 <!-- configure the camel activemq component to use the current broker -->
+    <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent" >
+        <property name="connectionFactory">
+          <bean class="org.apache.activemq.ActiveMQConnectionFactory">
+            <property name="brokerURL" value="vm://SkladServer?create=false&amp;waitForStart=10000" />
+            <property name="userName" value="${activemq.username}"/>
+            <property name="password" value="${activemq.password}"/>
+          </bean>
+        </property>
+    </bean>
+
 </beans>

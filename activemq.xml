@@ -32,8 +32,8 @@
     <!--
         The <broker> element is used to configure the ActiveMQ broker.
     -->
-    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="localhost" dataDirectory="${activemq.data}" schedulePeriodForDestinationPurge="10000" 
-schedulerSupport="true" useJmx="true">
+    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="SkladServer" dataDirectory="${activemq.data}" schedulePeriodForDestinationPurge="10000" 
+schedulerSupport="true">
 
      <!--
             Use VM cursor
@@ -43,12 +43,20 @@ schedulerSupport="true" useJmx="true">
         <destinationPolicy>
             <policyMap>
               <policyEntries>
-                <policyEntry topic=">" prioritizedMessages="true" producerFlowControl="true" memoryLimit="1mb"  consumersBeforeDispatchStarts="1" gcInactiveDestinations="true" inactiveTimoutBeforeGC="60000" strictOrderDispatch="true" optimizedDispatch="true">
+                <policyEntry topic=">" producerFlowControl="true" >
                   <pendingSubscriberPolicy>
                     <vmCursor />
                   </pendingSubscriberPolicy>
                 </policyEntry>
-                <policyEntry queue=">" prioritizedMessages="true" producerFlowControl="true" memoryLimit="1mb"  consumersBeforeDispatchStarts="1" gcInactiveDestinations="true" inactiveTimoutBeforeGC="60000" strictOrderDispatch="true" optimizedDispatch="true">
+                <policyEntry queue=">" prioritizedMessages="true" producerFlowControl="true" gcInactiveDestinations="true" inactiveTimoutBeforeGC="60000">
+                  <deadLetterStrategy>
+            <!--
+              Use the prefix 'DLQ.' for the destination name, and make
+              the DLQ a queue rather than a topic
+            -->
+            <individualDeadLetterStrategy  queuePrefix="DLQ." useQueueForQueueMessages="true" processExpired="false"/>
+          </deadLetterStrategy>
+
                   <pendingQueuePolicy>
                     <vmQueueCursor/>
                   </pendingQueuePolicy>
@@ -70,7 +78,33 @@ schedulerSupport="true" useJmx="true">
         </managementContext>
 
 
-	<networkConnectors />
+	<networkConnectors>
+		<networkConnector name="Sklad_2_OBS" id="Sklad_2_OBS" uri="static:(tcp://192.168.1.213:61616,tcp://192.168.11.3:61616)"
+			networkTTL="3"
+			conduitSubscriptions="false"
+		>
+			<excludedDestinations>
+				<queue physicalName="always.include.queue_stat" />
+				<queue physicalName="dead_213" />
+				<queue physicalName="pg_queue_check_addr" />
+				<queue physicalName="pg_queue_houses" />
+				<queue physicalName="pg_queue_streets" />
+				<queue physicalName="pg_queue_houses_reply_*" />
+				<queue physicalName="pg_queue_streets_reply_*" />
+				<queue physicalName="queue_send_to_foxpro" />
+				<queue physicalName="queue_delete_photos_one" />
+				<queue physicalName="queue_send_zakaz" />
+				<queue physicalName="queue_smsgate" />
+				<queue physicalName="queue_smsgate_good_exist" />
+				<queue physicalName="queue_update_photos" />
+				<queue physicalName="queue_update_photos_one" />
+				<queue physicalName="statistic:pgsql" />
+				<queue physicalName="statistic:mongo" />
+				<queue physicalName="queue_update_goods" />
+				<queue physicalName="queue_update_kolvo" />
+			</excludedDestinations>
+		</networkConnector>
+	</networkConnectors>
 
 
         <!--
@@ -83,6 +117,10 @@ schedulerSupport="true" useJmx="true">
         <persistenceAdapter>
             <kahaDB directory="${activemq.data}/kahadb" enableJournalDiskSyncs="false"/>
         </persistenceAdapter>
+        <plugins>
+         <discardingDLQBrokerPlugin dropAll="true" dropTemporaryTopics="true" dropTemporaryQueues="true" />
+         <statisticsBrokerPlugin/>
+        </plugins>
 
 
         <!--
@@ -92,11 +130,11 @@ schedulerSupport="true" useJmx="true">
             http://activemq.apache.org/configuring-transports.html
         -->
         <transportConnectors>
-            <transportConnector name="openwire" enableStatusMonitor="true" uri="tcp://0.0.0.0:61616"/>
-		<transportConnector name="stomp" enableStatusMonitor="true" uri="stomp://0.0.0.0:61612?transport.closeAsync=false"/>
-            <transportConnector name="stomp+nio" enableStatusMonitor="true" uri="stomp+nio://0.0.0.0:61613?transport.closeAsync=false"/>
-		<transportConnector name="xmpp" enableStatusMonitor="true" uri="xmpp://0.0.0.0:61222"/>
-	   <transportConnector name="websocket" uri="ws://0.0.0.0:61614"/>
+<transportConnector name="openwire" enableStatusMonitor="true" uri="tcp://0.0.0.0:61616"/>
+<transportConnector name="stomp" enableStatusMonitor="true" uri="stomp://0.0.0.0:61612?transport.defaultHeartBeat=5000,0"/>
+ <transportConnector name="stomp+nio" enableStatusMonitor="true" uri="stomp+nio://0.0.0.0:61613?transport.defaultHeartBeat=5000,0"/>
+<transportConnector name="xmpp" enableStatusMonitor="true" uri="xmpp://0.0.0.0:61222"/>
+  <transportConnector name="websocket" enableStatusMonitor="true" uri="ws://0.0.0.0:61614?transport.defaultHeartBeat=5000,0"/>
         </transportConnectors>
 
     </broker>
