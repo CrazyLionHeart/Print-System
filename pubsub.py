@@ -76,24 +76,6 @@ def send_email(message_text, subject, sender, recipients, host, attach = None):
     d.addErrback(log.err)
     return d
 
-    
-
-def Send_Notify(func_name = "window.toastr.success", func_args = [], recipient = ["*"], group = ["*"], profile = "user", callbackArgs = None, errbackArgs = None):
-        log.msg("Отправка уведомления пользователю")
-        if not (callbackArgs is None):
-            func_name, func_args, recipient, group = callbackArgs
-        if not (errbackArgs is None):
-            func_name, func_args, recipient, group = errbackArgs
-        conf = {}
-        message = {}
-        message["body"] = {'func_name': func_name , 'func_args': func_args}
-        message["recipient"] = recipient
-        message["group"] = group
-        message["profile"] = profile
-        ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
-        log.msg("Control Message: %s" % ControlMessage)
-        amq.producer(ControlMessage)
-
 class Simple(Resource):
     isLeaf = True
 
@@ -143,20 +125,20 @@ class Simple(Resource):
         if (Attributes['job-state'] in success):
             func_name = "window.toastr.success"
             func_args = ["Документ успешно напечатан!", "Печать завершена"]
-            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
             d.addErrback(log.err)
 
         elif (Attributes['job-state'] in errors):
             func_name = "window.toastr.error"
             func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
-            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
             d.addErrback(log.err)
         else:
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor({"jobId": jobId, "conf": conf})
             func_name = "window.toastr.info"
             func_args = ["Печать еще не завершена.", "Идет печать"]
-            d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
             d.addErrback(log.err)
         request.write("Checked")
         request.finish()
@@ -267,7 +249,7 @@ class Simple(Resource):
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
                     d.addErrback(log.err)
 
 
@@ -287,7 +269,7 @@ class Simple(Resource):
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
                 group = request.getHeader('message_group').split(",")
-                d = deferLater(reactor, 0, Send_Notify, func_name, func_args, recipient, group)
+                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
                 d.addErrback(log.err)
                 return "Send notify"
 
@@ -308,8 +290,8 @@ class Simple(Resource):
 
 
                 df = send_email(message, subject, sender, recipients, host, attach)
-                df.addCallback(Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, group))
-                df.addErrback(Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, group))
+                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, group))
+                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, group))
 
                 return "Задание поставлено"
             return "Test"
