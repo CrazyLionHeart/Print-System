@@ -35,18 +35,21 @@ class AMQ:
         client.disconnect()
 
 
-    def Send_Notify(self, func_name = "window.toastr.success", func_args = [], recipient = ["*"], group = ["*"], profile = "user", callbackArgs = None, errbackArgs = None):
+    def Send_Notify(self, func_name = "window.toastr.success", func_args = [], recipient = ["*"], profile = "user", callbackArgs = None, errbackArgs = None):
         if not (callbackArgs is None):
-            func_name, func_args, recipient, group = callbackArgs
+            func_name, func_args, recipient = callbackArgs
         if not (errbackArgs is None):
-            func_name, func_args, recipient, group = errbackArgs
+            func_name, func_args, recipient = errbackArgs
         conf = {}
         message = {}
         message["body"] = {'func_name': func_name , 'func_args': func_args}
         message["recipient"] = recipient
-        message["group"] = group
         message["profile"] = profile
+        message["tag"] = "print_system"
         ControlMessage = {"content": "%s" % json.dumps(message), "destination": {"type": "topic", "name": "ControlMessage"}, "conf": conf}
         self.producer(ControlMessage)
 
-
+    def Debug(self, queue, debug_message):
+        conf = {}
+        message = {"content": "%s" % debug_message, "destination": {"type": "queue", "name": queue}, "conf": conf}
+        self.producer(message)
