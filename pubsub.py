@@ -91,7 +91,6 @@ class Simple(Resource):
         """
         log.msg("Отправка задания печати на мониторинг")
         conf = {}
-        conf['message_group'] = data['conf']['message_group']
         conf['message_recipient'] = data['conf']['message_recipient']
         jobId = data["jobId"]
         conf['AMQ_SCHEDULED_DELAY'] = 3000
@@ -119,26 +118,25 @@ class Simple(Resource):
         success = [7,9]
         errors = [6,8,4]
         recipient =  request.getHeader('message_recipient').split(",")
-        group = request.getHeader('message_group').split(",")
 
         # Если задание успешно напечаталось...
         if (Attributes['job-state'] in success):
             func_name = "window.toastr.success"
             func_args = ["Документ успешно напечатан!", "Печать завершена"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
             d.addErrback(log.err)
 
         elif (Attributes['job-state'] in errors):
             func_name = "window.toastr.error"
             func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
             d.addErrback(log.err)
         else:
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor({"jobId": jobId, "conf": conf})
             func_name = "window.toastr.info"
             func_args = ["Печать еще не завершена.", "Идет печать"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
             d.addErrback(log.err)
         request.write("Checked")
         request.finish()
@@ -149,15 +147,24 @@ class Simple(Resource):
                Валидируем XML
                Отправляем XML на обработку в очередь
          """
+         debug = list()
+
          input_xml = request.args.get('xml', [None])[0]
+
          if input_xml is None:
              input_xml = request.content.read()
-             
+             log.msg("Input xml: %s" % input_xml)
+             debug.append("Input xml: %s" % input_xml)
+         else:
+             log.msg("Input xml: %s" % input_xml)
+             debug.append("Input xml: %s" % input_xml)
+
          try:
              xml = etree.fromstring(input_xml)
          except (etree.XMLSyntaxError, ValueError), detail:
              log.msg( "Что за чушь вы мне подсунули? %s" % detail )
-             request.write( "Что за чушь вы мне подсунули?" )
+             request.write( "Что за чушь вы мне подсунули? %s" % detail )
+             debug.append( "Что за чушь вы мне подсунули? %s" % detail )
          else:
              """
              Здесь задаем заголовки необходимые для обработки печатной формы
@@ -183,7 +190,10 @@ class Simple(Resource):
                          conf[child.tag] = child.text
     
              print_data = xml.xpath('//print_data')
-             log.msg("print_data: %s" % print_data)
+             log.msg("print_data: %s" % print_data )
+             debug.append( "print_data: %s" % print_data )
+             debug.append( "control_data: %s" % control_data )
+             debug.append( "AMQ headers: %s" % conf )
     
              if (isinstance(print_data, types.NoneType) == False):
     
@@ -197,7 +207,11 @@ class Simple(Resource):
                      amq.producer(item)
              else:
                   log.msg( "Нет блока данных print_data" )
+                  debug.append( "Нет блока данных print_data" )
                   request.write("Нет блока данных print_data!")
+         if ('debug' in conf):
+             for element in debug:
+                 amq.Debug(conf['debug'], element)
          request.finish()
 
 
@@ -218,8 +232,20 @@ class Simple(Resource):
             """
                Тут происходит обработка печатных форм
             """
-            log.msg("Print args: %s" % request.args)
-            log.msg("Print Headers: %s" % request.getAllHeaders())
+            debug = False
+
+            headers = request.getAllHeaders()
+            args = request.args
+
+            log.msg("Print args: %s" % args)
+            log.msg("Print Headers: %s" % headers)
+
+            if "debug" in headers:
+                debug = True  
+
+            if debug == True:
+                amq.Debug(headers['debug'], "Return headers from Camel: %s" % headers)
+                amq.Debug(headers['debug'], "Return args from Camel: %s" % args)
 
             guid = request.getHeader('xml_get_param_guid')
             type = request.getHeader('output')
@@ -244,12 +270,11 @@ class Simple(Resource):
                     d.addErrback(log.err)
                 else:
                     recipient =  conf['message_recipient'].split(",")
-                    group = conf['message_group'].split(",")
 
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
+                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
                     d.addErrback(log.err)
 
 
@@ -268,8 +293,8 @@ class Simple(Resource):
                 func_name = "window.toastr.success"
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
-                group = request.getHeader('message_group').split(",")
-                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, group)
+
+                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
                 d.addErrback(log.err)
                 return "Send notify"
 
@@ -286,12 +311,10 @@ class Simple(Resource):
                 attach = FILE_LOCATION
 
                 recipient =  request.getHeader('message_recipient').split(",")
-                group = request.getHeader('message_group').split(",")
-
 
                 df = send_email(message, subject, sender, recipients, host, attach)
-                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, group))
-                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, group))
+                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient,))
+                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient))
 
                 return "Задание поставлено"
             return "Test"
