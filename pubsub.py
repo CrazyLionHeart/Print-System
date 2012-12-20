@@ -47,6 +47,9 @@ from AMQ import *
 
 amq = AMQ()
 
+profile = "user"
+tag = "print_system"
+
 stringify = etree.XPath("string()")
 
 def find(f, seq):
@@ -123,20 +126,20 @@ class Simple(Resource):
         if (Attributes['job-state'] in success):
             func_name = "window.toastr.success"
             func_args = ["Документ успешно напечатан!", "Печать завершена"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
             d.addErrback(log.err)
 
         elif (Attributes['job-state'] in errors):
             func_name = "window.toastr.error"
             func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
             d.addErrback(log.err)
         else:
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor({"jobId": jobId, "conf": conf})
             func_name = "window.toastr.info"
             func_args = ["Печать еще не завершена.", "Идет печать"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
+            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
             d.addErrback(log.err)
         request.write("Checked")
         request.finish()
@@ -274,7 +277,7 @@ class Simple(Resource):
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
+                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
                     d.addErrback(log.err)
 
 
@@ -294,7 +297,7 @@ class Simple(Resource):
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
 
-                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient)
+                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
                 d.addErrback(log.err)
                 return "Send notify"
 
@@ -313,8 +316,8 @@ class Simple(Resource):
                 recipient =  request.getHeader('message_recipient').split(",")
 
                 df = send_email(message, subject, sender, recipients, host, attach)
-                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient,))
-                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient))
+                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, profile, tag))
+                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, profile, tag))
 
                 return "Задание поставлено"
             return "Test"
