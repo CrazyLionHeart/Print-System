@@ -20,11 +20,6 @@ import cups
 
 import urllib
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger().setLevel(logging.DEBUG)
-
-
 import os
 import time
 from datetime import datetime
@@ -99,7 +94,8 @@ class Simple(Resource):
         conf['AMQ_SCHEDULED_DELAY'] = 3000
         conf['CamelCharsetName'] = 'UTF-8'
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
-        amq.producer(data)
+        d = deferLater(reactor, 0, amq.producer, data)
+        d.addErrback(log.err)
 
     def _get_print_status(self, request):
         """ 
@@ -207,7 +203,9 @@ class Simple(Resource):
                  stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
     
                  for item in [stomp_print_data, stomp_control_control_data, stomp_control_data]:
-                     amq.producer(item)
+                     d = deferLater(reactor, 0, amq.producer, item)
+                     d.addErrback(log.err)
+#                     amq.producer(item)
              else:
                   log.msg( "Нет блока данных print_data" )
                   debug.append( "Нет блока данных print_data" )
@@ -215,8 +213,7 @@ class Simple(Resource):
          if ('debug' in conf):
              for element in debug:
                  amq.Debug(conf['debug'], element)
-         request.finish()
-
+         return
 
                 
     def _print_job(self, conf = None):
@@ -384,10 +381,11 @@ class Simple(Resource):
      
     def render_POST(self, request):
         log.msg(request)
+        log.msg(request.getAllHeaders())
         if (self.uri == "print"):
             d = deferLater(reactor, 0, self.parse_POST, request)
             d.addErrback(log.err)
-            return NOT_DONE_YET
+            return "Данные получил"
 
         elif (self.uri == "test"):
             log.msg("Headers: %s" % request.getAllHeaders())
