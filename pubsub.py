@@ -151,9 +151,12 @@ class Simple(Resource):
          input_xml = request.args.get('xml', [None])[0]
 
          if input_xml is None:
-             input_xml = request.content.read()
-             log.msg("Input xml: %s" % input_xml)
-             debug.append("Input xml: %s" % input_xml)
+             try:
+                 input_xml = request.content.read()
+                 log.msg("Input xml: %s" % input_xml)
+                 debug.append("Input xml: %s" % input_xml)
+             except ValueError:
+                 request.write("А где данные???")
          else:
              log.msg("Input xml: %s" % input_xml)
              debug.append("Input xml: %s" % input_xml)
@@ -213,7 +216,7 @@ class Simple(Resource):
          if ('debug' in conf):
              for element in debug:
                  amq.Debug(conf['debug'], element)
-         return
+         request.finish()
 
                 
     def _print_job(self, conf = None):
@@ -385,7 +388,7 @@ class Simple(Resource):
         if (self.uri == "print"):
             d = deferLater(reactor, 0, self.parse_POST, request)
             d.addErrback(log.err)
-            return "Данные получил"
+            return NOT_DONE_YET
 
         elif (self.uri == "test"):
             log.msg("Headers: %s" % request.getAllHeaders())

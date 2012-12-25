@@ -11,11 +11,11 @@ import json
 class AMQ:
 
     def __init__(self):
-        log.msg("Создаем объект AMQ")
+        log.msg("Создаем объект AMQ", system="ActiveMQ")
         self.config = StompConfig("tcp://localhost:61613")
 
     def consumer(self, QUEUE):
-        log.msg("Начинаем забирать сообщение из очереди %s" % QUEUE)
+        log.msg("Начинаем забирать сообщение из очереди %s" % QUEUE, system="ActiveMQ")
         stomp = Stomp(self.config)
         stomp.connect()
         headers = {
@@ -29,12 +29,12 @@ class AMQ:
         while True:
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            log.msg("Получено сообщение из очереди: %s" % frame)
+            log.msg("Получено сообщение из очереди: %s" % frame, system="ActiveMQ")
             return frame.body
         stomp.disconnect()
 
     def producer(self, data = {"content": None, "destination": {"type": None, "name": None}, "conf": {} }):
-        log.msg("Кладем сообщение в %s %s: %s" % (data['destination']['type'], data['destination']['name'], data['content']))
+        log.msg("Кладем сообщение в %s %s: %s" % (data['destination']['type'], data['destination']['name'], data['content']), system="ActiveMQ")
         client = Stomp(self.config)
         client.connect()
         client.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
