@@ -5,17 +5,16 @@ from stompest.config import StompConfig
 from stompest.sync import Stomp
 
 from twisted.python import log
-import logging
 import json
 
 class AMQ:
 
     def __init__(self):
-        logger.debug("Создаем объект AMQ")
+        log.msg("Создаем объект AMQ")
         self.config = StompConfig("tcp://localhost:61613")
 
     def consumer(self, QUEUE):
-        logger.debug("Начинаем забирать сообщение из очереди %s" % QUEUE)
+        log.msg("Начинаем забирать сообщение из очереди %s" % QUEUE)
         stomp = Stomp(self.config)
         stomp.connect()
         headers = {
@@ -29,12 +28,12 @@ class AMQ:
         while True:
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            logger.debug("Получено сообщение из очереди: %s" % frame)
+            log.msg("Получено сообщение из очереди: %s" % frame)
             return frame.body
         stomp.disconnect()
 
     def producer(self, data = {"content": None, "destination": {"type": None, "name": None}, "conf": {} }):
-        logger.debug("Кладем сообщение в %s %s: %s" % (data['destination']['type'], data['destination']['name'], data['content']))
+        log.msg("Кладем сообщение в %s %s: %s" % (data['destination']['type'], data['destination']['name'], data['content']))
         client = Stomp(self.config)
         client.connect()
         client.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
@@ -59,10 +58,3 @@ class AMQ:
         conf = {}
         message = {"content": "%s" % debug_message, "destination": {"type": "queue", "name": queue}, "conf": conf}
         self.producer(message)
-
-logger = logging.getLogger("AMQ")
-logger.setLevel(logging.INFO)
-logging.basicConfig()
-observer = log.PythonLoggingObserver(loggerName='AMQ')
-observer.start()
-
