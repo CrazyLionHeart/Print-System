@@ -75,40 +75,15 @@
       <setHeader headerName="CamelFileName">
             <simple>${headers.XML_GET_PARAM_GUID}.${in.headers.output}</simple>
       </setHeader>
-      <choice>
-        <when>
-          <simple>${in.headers.Content-Type} == 'application/pdf'</simple>
-          <setHeader headerName="CamelHttpMethod">
+      <setHeader headerName="CamelHttpMethod">
             <constant>GET</constant>
-          </setHeader>
-          <setHeader headerName="Recipient">
+      </setHeader>
+      <setHeader headerName="Recipient">
             <simple>file:/tmp/amq,http://localhost:8080/print/?filename=${headers.XML_GET_PARAM_GUID}</simple>
-          </setHeader>
-          <recipientList delimiter=",">
+      </setHeader>
+      <recipientList delimiter=",">
             <header>Recipient</header>
-          </recipientList>
-        </when>
-	<when>
-          <simple>${in.headers.Content-Type} == 'application/xls'</simple>
-          <setHeader headerName="CamelHttpMethod">
-            <constant>GET</constant>
-          </setHeader>
-          <setHeader headerName="Recipient">
-            <simple>file:/tmp/amq,http://localhost:8080/print/?filename=${headers.XML_GET_PARAM_GUID}</simple>
-          </setHeader>
-          <recipientList delimiter=",">
-            <header>Recipient</header>
-          </recipientList>
-        </when>
-        <otherwise>
-	  <setHeader headerName="Recipient">
-            <simple>file:/tmp/amq_error,activemq:queue:jasper_error</simple>
-          </setHeader>
-          <recipientList delimiter=",">
-            <header>Recipient</header>
-          </recipientList>
-        </otherwise>
-      </choice>
+      </recipientList>
     </route>
 
     <route id="check_printed">
@@ -121,14 +96,15 @@
       </recipientList>
     </route>
 
-
-   <route id="print_system">
-	<from uri="activemq:queue:print_system" />
-	<setHeader headerName="CamelHttpMethod">
-                <constant>POST</constant>
+    <route id="print_system">
+        <from uri="activemq:queue:print_system" />
+        <setHeader headerName="CamelHttpMethod">
+            <constant>POST</constant>
         </setHeader>
-	<to uri="http://127.0.0.1:8080/print" />
-   </route>
+        <recipientList>
+        <simple>http://localhost:8080/print</simple>
+      </recipientList>
+    </route>
 
     </camelContext>
 
@@ -141,15 +117,15 @@
     <property name="password" value="Zona_baby009"/>
   </bean> -->
 
-	 <!-- configure the camel activemq component to use the current broker -->
-    <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent" >
-        <property name="connectionFactory">
-          <bean class="org.apache.activemq.ActiveMQConnectionFactory">
-            <property name="brokerURL" value="vm://SkladServer?create=false&amp;waitForStart=10000" />
-            <property name="userName" value="${activemq.username}"/>
-            <property name="password" value="${activemq.password}"/>
-          </bean>
-        </property>
-    </bean>
+<bean id="deadLetterErrorHandler" class="org.apache.camel.builder.DeadLetterChannelBuilder">
+  <property name="deadLetterUri" value="activemq:queue:dead_SkladServer-Dev"/>	
+  <property name="redeliveryPolicy" ref="RedeliveryPolicyConfig"/>
+</bean>
+
+<bean id="RedeliveryPolicyConfig" class="org.apache.camel.processor.RedeliveryPolicy">
+    <property name="maximumRedeliveries" value="6"/>
+    <property name="redeliveryDelay" value="35000"/>
+</bean>
+
 
 </beans>
