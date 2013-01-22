@@ -231,6 +231,7 @@ class Simple(Resource):
         d.addErrback(log.err)
 
     def render_GET(self, request):
+	request.setHeader('Allow-Control-Allow-Origin', '*')
         if (self.uri == "print"):
             """
                Тут происходит обработка печатных форм
