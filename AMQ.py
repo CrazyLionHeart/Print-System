@@ -23,7 +23,7 @@ class AMQ:
     def __init__(self, config=None):
         log.msg("Создаем объект AMQ")
         if config is None:
-            config = StompConfig("failover:(tcp://192.168.1.214:61613)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=-1")
+            config = StompConfig("failover:(tcp://localhost:61613)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=-1")
         self.config = config
         
     @defer.inlineCallbacks
@@ -58,7 +58,8 @@ class AMQ:
         frame = inspect.currentframe()
         log.msg(inspect.getargvalues(frame))
         log.msg("Кладем сообщение в %s %s: %s" % (data['destination']['type'], data['destination']['name'], data['content']))
-        yield client.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
+        val = yield client.send("/%(type)s/%(name)s" % data['destination'], data['content'], data['conf'])
+        log.msg(val)
         defer.returnValue(client)
 
 

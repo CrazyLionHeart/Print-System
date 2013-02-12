@@ -40,7 +40,8 @@ from urlparse import *
 
 from AMQ import *
 
-amq = AMQ().connect()
+amq = AMQ()
+amq_object = amq.connect()
 
 profile = "user"
 tag = "print_system"
@@ -94,8 +95,8 @@ class Simple(Resource):
         conf['AMQ_SCHEDULED_DELAY'] = 15000
         conf['CamelCharsetName'] = 'UTF-8'
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
-        amq.addCallback(AMQ().producer, data)
-        amq.addErrback(log.err)
+        amq_object.addCallback(amq.producer, data)
+        amq_object.addErrback(log.err)
 
     def _get_print_status(self, jobId, recipient):
         """ 
@@ -140,8 +141,8 @@ class Simple(Resource):
             func_name = "window.toastr.info"
             func_args = ["Печать еще не завершена.", print_status[ Attributes['job-state'] ]]
 
-        amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
-        amq.addErrback(log.err)
+        amq_object.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+        amq_object.addErrback(log.err)
         
         return "Checked"
 
@@ -211,16 +212,16 @@ class Simple(Resource):
                  stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
     
                  for item in [stomp_print_data, stomp_control_control_data, stomp_control_data]:
-                     amq.addCallback(AMQ().producer, item)
-                     amq.addErrback(log.err)
+                     amq_object.addCallback(amq.producer, item)
+                     amq_object.addErrback(log.err)
              else:
                   log.msg( "Нет блока данных print_data" )
                   debug.append( "Нет блока данных print_data" )
                   return "Нет блока данных print_data!"
          if ('debug' in conf):
              for element in debug:
-                 amq.AddCallback(AMQ().Debug, conf['debug'], element)
-                 amq.AddErrback(log.msg)
+                 amq_object.AddCallback(amq.Debug, conf['debug'], element)
+                 amq_object.AddErrback(log.msg)
          request.finish()
 
                 
@@ -253,10 +254,10 @@ class Simple(Resource):
                 debug = True  
 
             if debug == True:
-                amq.AddCallback(AMQ().Debug, headers['debug'], "Return headers from Camel: %s" % headers)
-                amq.AddErrback(log.msg)
-                amq.AddCallback(AMQ().Debug, headers['debug'], "Return args from Camel: %s" % args)
-                amq.AddErrback(log.msg)
+                amq_object.AddCallback(amq.Debug, headers['debug'], "Return headers from Camel: %s" % headers)
+                amq_object.AddErrback(log.msg)
+                amq_object.AddCallback(amq.Debug, headers['debug'], "Return args from Camel: %s" % args)
+                amq_object.AddErrback(log.msg)
 
             guid = request.getHeader('xml_get_param_guid')
             type = request.getHeader('output')
@@ -285,8 +286,8 @@ class Simple(Resource):
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
-                    amq.addErrback(log.err)
+                    amq_object.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                    amq_object.addErrback(log.err)
 
                 return "Send to print"
 
@@ -304,8 +305,8 @@ class Simple(Resource):
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
 
-                amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
-                amq.addErrback(log.err)
+                amq_object.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                amq_object.addErrback(log.err)
                 return "Send notify"
 
             elif (action == "email"):
@@ -323,8 +324,8 @@ class Simple(Resource):
                 recipient =  request.getHeader('message_recipient').split(",")
 
                 df = send_email(message, subject, sender, recipients, host, attach)
-                df.addCallback(AMQ().Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, profile, tag))
-                df.addErrback(AMQ().Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, profile, tag))
+                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, profile, tag))
+                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, profile, tag))
 
                 return "Задание поставлено"
             return "Test"
@@ -359,8 +360,8 @@ class Simple(Resource):
             if not (xpath is None):
                 for child in xpath:
                     if (child.attrib['size'] != 0 ):
-                        amq.addCallback(AMQ().consumer, "/queue/jasper_print_data_%s" % guid)
-                        amq.addErrback(log.msg)
+                        amq_object.addCallback(amq.consumer, "/queue/jasper_print_data_%s" % guid)
+                        amq_object.addErrback(log.msg)
                         log.msg("Print_data: %s" % print_data)
             return NOT_DONE_YET
 
