@@ -94,7 +94,7 @@ class Simple(Resource):
         conf['AMQ_SCHEDULED_DELAY'] = 15000
         conf['CamelCharsetName'] = 'UTF-8'
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
-        amq.addCallback(amq.producer, data)
+        amq.addCallback(AMQ().producer, data)
         amq.addErrback(log.err)
 
     def _get_print_status(self, jobId, recipient):
@@ -140,7 +140,7 @@ class Simple(Resource):
             func_name = "window.toastr.info"
             func_args = ["Печать еще не завершена.", print_status[ Attributes['job-state'] ]]
 
-        amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+        amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
         amq.addErrback(log.err)
         
         return "Checked"
@@ -219,7 +219,7 @@ class Simple(Resource):
                   return "Нет блока данных print_data!"
          if ('debug' in conf):
              for element in debug:
-                 amq.AddCallback(amq.Debug, conf['debug'], element)
+                 amq.AddCallback(AMQ().Debug, conf['debug'], element)
                  amq.AddErrback(log.msg)
          request.finish()
 
@@ -253,9 +253,9 @@ class Simple(Resource):
                 debug = True  
 
             if debug == True:
-                amq.AddCallback(amq.Debug, headers['debug'], "Return headers from Camel: %s" % headers)
+                amq.AddCallback(AMQ().Debug, headers['debug'], "Return headers from Camel: %s" % headers)
                 amq.AddErrback(log.msg)
-                amq.AddCallback(amq.Debug, headers['debug'], "Return args from Camel: %s" % args)
+                amq.AddCallback(AMQ().Debug, headers['debug'], "Return args from Camel: %s" % args)
                 amq.AddErrback(log.msg)
 
             guid = request.getHeader('xml_get_param_guid')
@@ -285,7 +285,7 @@ class Simple(Resource):
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                    amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
                     amq.addErrback(log.err)
 
                 return "Send to print"
@@ -304,7 +304,7 @@ class Simple(Resource):
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
 
-                amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                amq.addCallback(AMQ().Send_Notify, func_name, func_args, recipient, profile, tag)
                 amq.addErrback(log.err)
                 return "Send notify"
 
@@ -323,8 +323,8 @@ class Simple(Resource):
                 recipient =  request.getHeader('message_recipient').split(",")
 
                 df = send_email(message, subject, sender, recipients, host, attach)
-                df.addCallback(amq.Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, profile, tag))
-                df.addErrback(amq.Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, profile, tag))
+                df.addCallback(AMQ().Send_Notify, callbackArgs=("window.toastr.success", ["E-mail упешно отправлен!", "E-mail отправлен"], recipient, profile, tag))
+                df.addErrback(AMQ().Send_Notify, errbackArgs=("window.toastr.error", ["При отправке e-mail возникли проблемы!", "E-mail не отправлен"], recipient, profile, tag))
 
                 return "Задание поставлено"
             return "Test"
@@ -362,7 +362,7 @@ class Simple(Resource):
                         amq.addCallback(AMQ().consumer, "/queue/jasper_print_data_%s" % guid)
                         amq.addErrback(log.msg)
                         log.msg("Print_data: %s" % print_data)
-                        return NOT_DONE_YET
+            return NOT_DONE_YET
 
         elif (self.uri == "get_preview"):
             """
