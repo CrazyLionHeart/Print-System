@@ -4,6 +4,7 @@ from twisted.web import server
 from twisted.web.server import Site
 
 from twisted.python import log
+import logging
 
 import sys
 sys.path.append("/usr/local/bin")
@@ -27,8 +28,10 @@ def getWebService(port):
 # application object
 application = service.Application("Demo application")
 
-observer = log.PythonLoggingObserver(loggerName='stompest')
+observer = log.PythonLoggingObserver()
 observer.start()
+log.startLogging(sys.stdout)
+logging.basicConfig(level=logging.DEBUG)
 
 
 # attach the service to its parent application

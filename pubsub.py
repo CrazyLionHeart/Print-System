@@ -40,7 +40,7 @@ from urlparse import *
 
 from AMQ import *
 
-amq = AMQ()
+amq = AMQ().connect()
 
 profile = "user"
 tag = "print_system"
@@ -91,54 +91,59 @@ class Simple(Resource):
         conf = {}
         conf['message_recipient'] = data['conf']['message_recipient']
         jobId = data["jobId"]
-        conf['AMQ_SCHEDULED_DELAY'] = 3000
+        conf['AMQ_SCHEDULED_DELAY'] = 15000
         conf['CamelCharsetName'] = 'UTF-8'
         data = {"content": jobId, "destination": {"type": "queue", "name": "twisted_status"}, 'conf': conf }
-        d = deferLater(reactor, 0, amq.producer, data)
-        d.addErrback(log.err)
+        amq.addCallback(amq.producer, data)
+        amq.addErrback(log.err)
 
-    def _get_print_status(self, request):
+    def _get_print_status(self, jobId, recipient):
         """ 
            Отправляем задание на печать.
 
         Доступные статусы:
-    IPP_JOB_ABORTED = 8
-    IPP_JOB_CANCELED = 7
-    IPP_JOB_COMPLETED = 9
-    IPP_JOB_HELD = 4
-    IPP_JOB_PENDING = 3
-    IPP_JOB_PROCESSING = 5
-    IPP_JOB_STOPPED = 6
+            IPP_JOB_ABORTED = 8
+            IPP_JOB_CANCELED = 7
+            IPP_JOB_COMPLETED = 9
+            IPP_JOB_HELD = 4
+            IPP_JOB_PENDING = 3
+            IPP_JOB_PROCESSING = 5
+            IPP_JOB_STOPPED = 6
         """
-        jobId =  request.args.get('jobId', [None])[0]
-        conf = request.getAllHeaders()
+        print_status = {
+            '8': 'Печать прервана',
+            '7': 'Печать отменена',
+            '9': 'Печать выполнена',
+            '4': 'Печать задержана',
+            '3': 'Задание на печать ожидает обработки',
+            '5': 'Задание на печать обрабатывается',
+            '6': 'Печать остановлена'
+        }
+
         Attributes = self.conn.getJobAttributes(int(jobId))
         # Определяем нужные статусы печати - которые мы не мониторим
-        success = [7,9]
-        errors = [6,8,4]
-        recipient =  request.getHeader('message_recipient').split(",")
+        success = [9]
+        errors = [8,7,6,4]
 
         # Если задание успешно напечаталось...
         if (Attributes['job-state'] in success):
             func_name = "window.toastr.success"
-            func_args = ["Документ успешно напечатан!", "Печать завершена"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
-            d.addErrback(log.err)
+            func_args = ["Документ успешно напечатан!", print_status[Attributes['job-state'] ] ]
 
         elif (Attributes['job-state'] in errors):
             func_name = "window.toastr.error"
-            func_args = ["Во время печати документа произошла ошибка: %s" % Attributes['job-state'], "Печать завершилась с ошибкой"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
-            d.addErrback(log.err)
+            func_args = ["Во время печати документа произошла ошибка: %s" % print_status[ Attributes['job-state'] ] , "Печать завершилась с ошибкой"]
+            
         else:
             # Нет, задание еще висит в очереди на печать. Отправляем его в очередь мониторинга
             self._put_to_monitor({"jobId": jobId, "conf": conf})
             func_name = "window.toastr.info"
-            func_args = ["Печать еще не завершена.", "Идет печать"]
-            d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
-            d.addErrback(log.err)
-        request.write("Checked")
-        request.finish()
+            func_args = ["Печать еще не завершена.", print_status[ Attributes['job-state'] ]]
+
+        amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+        amq.addErrback(log.err)
+        
+        return "Checked"
 
     def parse_POST(self, request):
          """
@@ -156,7 +161,7 @@ class Simple(Resource):
                  log.msg("Input xml: %s" % input_xml)
                  debug.append("Input xml: %s" % input_xml)
              except ValueError:
-                 request.write("А где данные???")
+                 return "А где данные???"
          else:
              log.msg("Input xml: %s" % input_xml)
              debug.append("Input xml: %s" % input_xml)
@@ -165,8 +170,8 @@ class Simple(Resource):
              xml = etree.fromstring(input_xml)
          except (etree.XMLSyntaxError, ValueError), detail:
              log.msg( "Что за чушь вы мне подсунули? %s" % detail )
-             request.write( "Что за чушь вы мне подсунули? %s" % detail )
              debug.append( "Что за чушь вы мне подсунули? %s" % detail )
+             return "Что за чушь вы мне подсунули? %s" % detail
          else:
              """
              Здесь задаем заголовки необходимые для обработки печатной формы
@@ -206,16 +211,16 @@ class Simple(Resource):
                  stomp_control_data = {"content": etree.tostring(control_data[0], encoding='utf-8', pretty_print=True), "destination": {"type": "queue", "name": "jasper_control_data"}, "conf": conf }
     
                  for item in [stomp_print_data, stomp_control_control_data, stomp_control_data]:
-                     d = deferLater(reactor, 0, amq.producer, item)
-                     d.addErrback(log.err)
-#                     amq.producer(item)
+                     amq.addCallback(AMQ().producer, item)
+                     amq.addErrback(log.err)
              else:
                   log.msg( "Нет блока данных print_data" )
                   debug.append( "Нет блока данных print_data" )
-                  request.write("Нет блока данных print_data!")
+                  return "Нет блока данных print_data!"
          if ('debug' in conf):
              for element in debug:
-                 amq.Debug(conf['debug'], element)
+                 amq.AddCallback(amq.Debug, conf['debug'], element)
+                 amq.AddErrback(log.msg)
          request.finish()
 
                 
@@ -231,7 +236,7 @@ class Simple(Resource):
         d.addErrback(log.err)
 
     def render_GET(self, request):
-	request.setHeader('Allow-Control-Allow-Origin', '*')
+        request.setHeader('Allow-Control-Allow-Origin', '*')
         if (self.uri == "print"):
             """
                Тут происходит обработка печатных форм
@@ -248,8 +253,10 @@ class Simple(Resource):
                 debug = True  
 
             if debug == True:
-                amq.Debug(headers['debug'], "Return headers from Camel: %s" % headers)
-                amq.Debug(headers['debug'], "Return args from Camel: %s" % args)
+                amq.AddCallback(amq.Debug, headers['debug'], "Return headers from Camel: %s" % headers)
+                amq.AddErrback(log.msg)
+                amq.AddCallback(amq.Debug, headers['debug'], "Return args from Camel: %s" % args)
+                amq.AddErrback(log.msg)
 
             guid = request.getHeader('xml_get_param_guid')
             type = request.getHeader('output')
@@ -278,9 +285,8 @@ class Simple(Resource):
                     # Если задание успешно напечаталось...
                     func_name = "window.toastr.error"
                     func_args = ["Ашипка генерации документа - неправильный шаблон или данные", "Печать отменена"]
-                    d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
-                    d.addErrback(log.err)
-
+                    amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                    amq.addErrback(log.err)
 
                 return "Send to print"
 
@@ -298,8 +304,8 @@ class Simple(Resource):
                 func_args = [content, "Предпросмотр подготовлен"]
                 recipient =  request.getHeader('message_recipient').split(",")
 
-                d = deferLater(reactor, 0, amq.Send_Notify, func_name, func_args, recipient, profile, tag)
-                d.addErrback(log.err)
+                amq.addCallback(amq.Send_Notify, func_name, func_args, recipient, profile, tag)
+                amq.addErrback(log.err)
                 return "Send notify"
 
             elif (action == "email"):
@@ -327,7 +333,10 @@ class Simple(Resource):
             """
                Тут мы обрабатываем проверку статуса печати документа
             """
-            d = deferLater(reactor, 0, self._get_print_status, request)
+            jobId =  request.args.get('jobId', [None])[0]
+            recipient =  request.getHeader('message_recipient').split(",")
+            
+            df = self._get_print_status(jobId, recipient)
             d.addErrback(log.err)
             return NOT_DONE_YET
 
@@ -350,9 +359,10 @@ class Simple(Resource):
             if not (xpath is None):
                 for child in xpath:
                     if (child.attrib['size'] != 0 ):
-                         print_data = amq.consumer("/queue/jasper_print_data_%s" % guid)
-                         log.msg("Print_data: %s" % print_data)
-                         return print_data
+                        amq.addCallback(AMQ().consumer, "/queue/jasper_print_data_%s" % guid)
+                        amq.addErrback(log.msg)
+                        log.msg("Print_data: %s" % print_data)
+                        return NOT_DONE_YET
 
         elif (self.uri == "get_preview"):
             """
