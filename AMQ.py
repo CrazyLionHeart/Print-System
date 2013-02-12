@@ -5,13 +5,18 @@ from stompest.config import StompConfig
 from stompest.sync import Stomp
 
 from twisted.python import log
+import logging
+
 import json
+import sys
+
+log.startLogging(sys.stdout)
 
 class AMQ:
 
     def __init__(self):
         log.msg("Создаем объект AMQ")
-        self.config = StompConfig("tcp://localhost:61613")
+        self.config = StompConfig("failover:(tcp://localhost:61613)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=-1")
 
     def consumer(self, QUEUE):
         log.msg("Начинаем забирать сообщение из очереди %s" % QUEUE)
@@ -40,7 +45,7 @@ class AMQ:
         client.disconnect()
 
 
-    def Send_Notify(self, func_name = "window.toastr.success", func_args = [], recipient = ["*"], profile = "user", tag = "", callbackArgs = None, errbackArgs = None):
+    def Send_Notify(self, func_name = "toastr.success", func_args = [], recipient = ["*"], profile = "user", tag = "", callbackArgs = None, errbackArgs = None):
         if not (callbackArgs is None):
             func_name, func_args, recipient, profile = callbackArgs
         if not (errbackArgs is None):

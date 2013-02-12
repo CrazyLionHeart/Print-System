@@ -3,6 +3,8 @@ from twisted.application import internet, service
 from twisted.web import server
 from twisted.web.server import Site
 
+from twisted.python import log
+
 import sys
 sys.path.append("/usr/local/bin")
 
@@ -24,6 +26,10 @@ def getWebService(port):
 # this is the core part of any tac file, the creation of the root-level
 # application object
 application = service.Application("Demo application")
+
+observer = log.PythonLoggingObserver(loggerName='stompest')
+observer.start()
+
 
 # attach the service to its parent application
 port = 8080
